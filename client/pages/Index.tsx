@@ -4,6 +4,10 @@ import { Button } from "@/components/ui/button";
 import ThemeToggle from "@/components/navigation/ThemeToggle";
 import { useState } from 'react';
 
+import { User as UserIcon } from 'lucide-react';
+import { useNavigate } from "react-router-dom";
+import { useAuth } from '@/lib/auth';
+
 import Chatbot from '@/components/Landing/Chatbot';
 import DemoModal from '@/components/Landing/DemoModal';
 import { useAppNavigation } from '@/lib/useAppNavigation';
@@ -12,6 +16,8 @@ export default function Index() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const handleAppClick = useAppNavigation();
+  const { session } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -28,53 +34,73 @@ export default function Index() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8 text-base font-medium">
-            <a href="#services" className="text-muted-foreground hover:text-primary transition-colors">Services</a>
-            <a href="#apply" className="text-muted-foreground hover:text-primary transition-colors">Apply Online</a>
-            <a href="#verify" className="text-muted-foreground hover:text-primary transition-colors">Verify Documents</a>
-            <a href="#help" className="text-muted-foreground hover:text-primary transition-colors">Help & Support</a>
-            <a href="#news" className="text-muted-foreground hover:text-primary transition-colors">News</a>
-            <a href="#contact" className="text-muted-foreground hover:text-primary transition-colors">Contact</a>
-
-            <div className="flex items-center gap-2">
-              <Button asChild variant="ghost">
-                <Link to="/register">Register</Link>
-              </Button>
-              <Button asChild variant="default" className="rounded-full">
-                <Link to="/login">Sign In</Link>
-              </Button>
-              <ThemeToggle />
-            </div>
-          </nav>
-
+          <div className="flex items-center gap-2">
+            {session && session.role === 'resident' ? (
+              <>
+                <Button
+                  onClick={() => navigate('/citizen/dashboard')}
+                  variant="default"
+                  className="rounded-full flex items-center gap-2"
+                >
+                  <UserIcon className="h-4 w-4" />
+                  {(session as any).resident?.firstName || 'Dashboard'}
+                </Button>
+                <ThemeToggle />
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost">
+                  <Link to="/register">Register</Link>
+                </Button>
+                <Button asChild variant="default" className="rounded-full">
+                  <Link to="/login">Sign In</Link>
+                </Button>
+                <ThemeToggle />
+              </>
+            )}
+          </div>
+          {/* Mobile Navigation */}
           {/* Mobile Navigation */}
           <div className="flex items-center gap-2 md:hidden">
             <ThemeToggle />
-            <Button asChild variant="default" className="rounded-full">
-              <Link to="/login">Sign In</Link>
-            </Button>
+            {session && session.role === 'resident' ? (
+              <Button
+                onClick={() => navigate('/citizen/dashboard')}
+                variant="default"
+                className="rounded-full flex items-center gap-2"
+              >
+                <UserIcon className="h-4 w-4" />
+                {(session as any).resident?.firstName || 'Dashboard'}
+              </Button>
+            ) : (
+              <Button asChild variant="default" className="rounded-full">
+                <Link to="/login">Sign In</Link>
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2">
               <Menu className="h-6 w-6" />
             </Button>
           </div>
         </div>
 
-        {isMenuOpen && (
-          <div className="md:hidden bg-background border-t">
-            <nav className="flex flex-col gap-4 p-4">
-              <a href="#services" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Services</a>
-              <a href="#apply" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Apply Online</a>
-              <a href="#verify" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Verify Documents</a>
-              <a href="#help" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Help & Support</a>
-              <a href="#news" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>News</a>
-              <a href="#contact" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Contact</a>
-              <Button asChild variant="ghost">
-                <Link to="/register">Register</Link>
-              </Button>
-            </nav>
-          </div>
-        )}
-      </header>
+        {
+          isMenuOpen && (
+            <div className="md:hidden bg-background border-t">
+              <nav className="flex flex-col gap-4 p-4">
+                <a href="#services" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Services</a>
+                <a href="#apply" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Apply Online</a>
+                <a href="#verify" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Verify Documents</a>
+                <a href="#help" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Help & Support</a>
+                <a href="#news" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>News</a>
+                <a href="#contact" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Contact</a>
+                <Button asChild variant="ghost">
+                  <Link to="/register">Register</Link>
+                </Button>
+              </nav>
+            </div>
+          )
+        }
+      </header >
 
       <section className="relative bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/images/nationalassembly.jpeg')" }}>
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-purple-900/60 to-green-900/40 backdrop-blur-sm"></div>
@@ -97,11 +123,11 @@ export default function Index() {
                 <Button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full h-12 w-12 p-0 bg-primary hover:bg-primary/90">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m21 21-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z"></path></svg>
                 </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+              </div >
+            </div >
+          </div >
+        </div >
+      </section >
 
       <section className="py-20 bg-background">
         <div className="container mx-auto px-4">
