@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AuthLogin from "./pages/AuthLogin";
+import StaffLogin from "./pages/StaffLogin";
 import PoliceDashboard from "./pages/PoliceDashboard";
 import ImmigrationDashboard from "./pages/ImmigrationDashboard";
 import CaseManagement from "./pages/CaseManagement";
@@ -63,6 +64,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<AuthLogin />} />
+              <Route path="/staff-login" element={<StaffLogin />} />
               <Route path="/register" element={<Register />} />
               <Route path="/staff-register" element={<StaffRegister />} />
 
