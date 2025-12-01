@@ -34,32 +34,40 @@ export default function Index() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="flex items-center gap-2">
-            {session && session.role === 'resident' ? (
-              <>
-                <Button
-                  onClick={() => navigate('/citizen/dashboard')}
-                  variant="default"
-                  className="rounded-full flex items-center gap-2"
-                >
-                  <UserIcon className="h-4 w-4" />
-                  {(session as any).resident?.firstName || 'Dashboard'}
-                </Button>
-                <ThemeToggle />
-              </>
-            ) : (
-              <>
-                <Button asChild variant="ghost">
-                  <Link to="/register">Register</Link>
-                </Button>
-                <Button asChild variant="default" className="rounded-full">
-                  <Link to="/login">Sign In</Link>
-                </Button>
-                <ThemeToggle />
-              </>
-            )}
-          </div>
-          {/* Mobile Navigation */}
+          <nav className="hidden md:flex items-center gap-8 text-base font-medium">
+            <a href="#services" className="text-muted-foreground hover:text-primary transition-colors">Services</a>
+            <a href="#apply" className="text-muted-foreground hover:text-primary transition-colors">Apply Online</a>
+            <a href="#verify" className="text-muted-foreground hover:text-primary transition-colors">Verify Documents</a>
+            <a href="#help" className="text-muted-foreground hover:text-primary transition-colors">Help & Support</a>
+            <a href="#news" className="text-muted-foreground hover:text-primary transition-colors">News</a>
+            <a href="#contact" className="text-muted-foreground hover:text-primary transition-colors">Contact</a>
+
+            <div className="flex items-center gap-2">
+              {session && session.role === 'resident' ? (
+                <>
+                  <Button
+                    onClick={() => navigate('/citizen/dashboard')}
+                    variant="default"
+                    className="rounded-full flex items-center gap-2"
+                  >
+                    <UserIcon className="h-4 w-4" />
+                    {(session as any).resident?.firstName || 'Dashboard'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild variant="ghost">
+                    <Link to="/register">Register</Link>
+                  </Button>
+                  <Button asChild variant="default" className="rounded-full">
+                    <Link to="/login">Sign In</Link>
+                  </Button>
+                </>
+              )}
+              <ThemeToggle />
+            </div>
+          </nav>
+
           {/* Mobile Navigation */}
           <div className="flex items-center gap-2 md:hidden">
             <ThemeToggle />
@@ -93,14 +101,16 @@ export default function Index() {
                 <a href="#help" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Help & Support</a>
                 <a href="#news" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>News</a>
                 <a href="#contact" className="text-muted-foreground hover:text-primary transition-colors py-2" onClick={() => setIsMenuOpen(false)}>Contact</a>
-                <Button asChild variant="ghost">
-                  <Link to="/register">Register</Link>
-                </Button>
+                {!session && (
+                  <Button asChild variant="ghost">
+                    <Link to="/register">Register</Link>
+                  </Button>
+                )}
               </nav>
             </div>
           )
         }
-      </header >
+      </header>
 
       <section className="relative bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/images/nationalassembly.jpeg')" }}>
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-purple-900/60 to-green-900/40 backdrop-blur-sm"></div>
