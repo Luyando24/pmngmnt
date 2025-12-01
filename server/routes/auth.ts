@@ -2,211 +2,270 @@ import { RequestHandler } from "express";
 import { v4 as uuidv4 } from "uuid";
 import {
   LoginRequest,
-  PatientLoginRequest,
-  PatientAlternativeLoginRequest,
-  RegisterStaffRequest,
   AuthSession,
-  RegisterStaffResponse,
+  ResidentRegistrationRequest,
 } from "@shared/api";
-import { query, hashPassword, verifyPassword } from "../lib/db";
+import { query, hashPassword, verifyPassword, hashNationalId } from "../lib/db";
 
-// Helper function to create hospital code
-function createHospitalCode(name: string): string {
-  return name
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 6)
-    .padEnd(3, "0");
-}
-
-// Helper function to generate 6-character hospital card ID
-function generateHospitalCardId(): string {
+// Helper to generate 8-character card ID
+function generateCardId(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
 }
 
-export const handleLogin: RequestHandler = async (req, res) => {
+// ============================================
+// CITIZEN/RESIDENT REGISTRATION
+// ============================================
+export const handleRegisterResident: RequestHandler = async (req, res) => {
   try {
-    const { email, password }: LoginRequest = req.body;
-    
-    // Find staff user by email
-    const result = await query(
-      'SELECT id, hospital_id, email, password_hash, role, first_name, last_name, is_active FROM staff_users WHERE email = ?',
-      [email]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    
-    const staffUser = result.rows[0];
-    
-    // Verify password
-    const isValidPassword = await verifyPassword(password, staffUser.password_hash);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    
-    if (!staffUser.is_active) {
-      return res.status(401).json({ error: "Account is inactive" });
-    }
-    
-    const session: AuthSession = {
-      userId: staffUser.id,
-      role: staffUser.role,
-      hospitalId: staffUser.hospital_id,
-      tokens: {
-        accessToken: `token_${staffUser.id}`,
-        expiresInSec: 3600,
-      },
-    };
-    
-    res.json(session);
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
+    const residentData: ResidentRegistrationRequest = req.body;
 
-export const handlePatientLogin: RequestHandler = async (req, res) => {
-  try {
-    const { hospitalCardId }: PatientLoginRequest = req.body;
-    
-    // Find patient by hospital card ID
-    const result = await query(
-      'SELECT id, hospital_card_id, first_name_cipher, last_name_cipher FROM patients WHERE hospital_card_id = ?',
-      [hospitalCardId]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: "Invalid hospital card ID" });
-    }
-    
-    const patient = result.rows[0];
-    
-    const session: AuthSession = {
-      userId: patient.id,
-      role: "patient",
-      patientId: patient.id,
-      tokens: {
-        accessToken: `token_${patient.id}`,
-        expiresInSec: 3600,
-      },
-    };
-    
-    res.json(session);
-  } catch (error) {
-    console.error('Patient login error:', error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
+    console.log('Registration attempt:', {
+      nrc: residentData.nrc,
+      passport: residentData.passportNumber,
+      email: residentData.email
+    });
 
-export const handlePatientAlternativeLogin: RequestHandler = async (req, res) => {
-  try {
-    const { email, phone, password }: PatientAlternativeLoginRequest = req.body;
-    
-    let result;
-    if (email) {
-      // Find patient by email
-      result = await query(
-        'SELECT id, password_hash FROM patients WHERE email_cipher = ? AND password_hash IS NOT NULL',
-        [email] // Note: In production, this should be encrypted
+    // Validate required fields
+    if (!residentData.firstName || !residentData.lastName || !residentData.dob) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Check if NRC already exists (for Zambian citizens)
+    if (residentData.nrc) {
+      const nrcHash = hashNationalId(residentData.nrc);
+      const existingNrc = await query(
+        'SELECT id FROM residents WHERE national_id_hash = $1',
+        [nrcHash]
       );
-    } else if (phone) {
-      // Find patient by phone
+
+      if (existingNrc.rows.length > 0) {
+        return res.status(400).json({ error: "NRC already registered" });
+      }
+    }
+
+    // Check if passport already exists (for foreign nationals)
+    if (residentData.passportNumber) {
+      const existingPassport = await query(
+        'SELECT id FROM residents WHERE passport_number = $1',
+        [residentData.passportNumber]
+      );
+
+      if (existingPassport.rows.length > 0) {
+        return res.status(400).json({ error: "Passport number already registered" });
+      }
+    }
+
+    // Check if email already exists
+    if (residentData.email) {
+      const existingEmail = await query(
+        'SELECT id FROM residents WHERE email = $1',
+        [residentData.email]
+      );
+
+      if (existingEmail.rows.length > 0) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+    }
+
+    // Generate IDs
+    const residentId = uuidv4();
+    const cardId = generateCardId();
+    const nrcHash = residentData.nrc ? hashNationalId(residentData.nrc) : null;
+
+    // Create password hash if password provided
+    let passwordHash = null;
+    if (residentData.password) {
+      passwordHash = await hashPassword(residentData.password);
+    }
+
+    // Insert new resident
+    await query(
+      `INSERT INTO residents (
+        id, nrc, passport_number, national_id_hash, first_name, last_name,
+        gender, date_of_birth, nationality, residency_status, phone, email,
+        address, occupation, marital_status, emergency_contact_name,
+        emergency_contact_phone, card_id, password_hash
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+      [
+        residentId,
+        residentData.nrc || null,
+        residentData.passportNumber || null,
+        nrcHash,
+        residentData.firstName,
+        residentData.lastName,
+        residentData.gender || null,
+        residentData.dob,
+        residentData.nationality || 'Zambia',
+        residentData.residencyStatus || 'citizen',
+        residentData.phone || null,
+        residentData.email || null,
+        residentData.address || null,
+        residentData.occupation || null,
+        residentData.maritalStatus || 'single',
+        residentData.emergencyContactName || null,
+        residentData.emergencyContactPhone || null,
+        cardId,
+        passwordHash
+      ]
+    );
+
+    console.log('✅ Resident registered successfully:', residentId);
+
+    // Return success with session
+    const session: AuthSession = {
+      userId: residentId,
+      role: "resident",
+      residentId: residentId,
+      tokens: {
+        accessToken: `token_${residentId}`,
+        expiresInSec: 3600,
+      },
+    };
+
+    res.status(201).json({
+      ...session,
+      resident: {
+        id: residentId,
+        cardId,
+        firstName: residentData.firstName,
+        lastName: residentData.lastName,
+        email: residentData.email,
+      }
+    });
+  } catch (error) {
+    console.error("Error registering resident:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// ============================================
+// CITIZEN/RESIDENT LOGIN
+// ============================================
+export const handleResidentLogin: RequestHandler = async (req, res) => {
+  try {
+    const { email, password, nrc }: any = req.body;
+
+    console.log('Login attempt:', { email, nrc: nrc ? '***' : undefined });
+
+    if (!password) {
+      return res.status(400).json({ error: "Password is required" });
+    }
+
+    let result;
+
+    if (email) {
+      // Login with email
       result = await query(
-        'SELECT id, password_hash FROM patients WHERE phone_auth_cipher = ? AND password_hash IS NOT NULL',
-        [phone] // Note: In production, this should be encrypted
+        'SELECT id, first_name, last_name, email, password_hash FROM residents WHERE email = $1',
+        [email]
+      );
+    } else if (nrc) {
+      // Login with NRC
+      result = await query(
+        'SELECT id, first_name, last_name, email, password_hash FROM residents WHERE nrc = $1',
+        [nrc]
       );
     } else {
-      return res.status(400).json({ error: "Email or phone required" });
+      return res.status(400).json({ error: "Email or NRC is required" });
     }
-    
+
     if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    
-    const patient = result.rows[0];
-    
+
+    const resident = result.rows[0];
+
+    if (!resident.password_hash) {
+      return res.status(401).json({ error: "Account not set up for password login" });
+    }
+
     // Verify password
-    const isValidPassword = await verifyPassword(password, patient.password_hash);
+    const isValidPassword = await verifyPassword(password, resident.password_hash);
     if (!isValidPassword) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    
+
+    console.log('✅ Login successful:', resident.id);
+
     const session: AuthSession = {
-      userId: patient.id,
-      role: "patient",
-      patientId: patient.id,
+      userId: resident.id,
+      role: "resident",
+      residentId: resident.id,
       tokens: {
-        accessToken: `token_${patient.id}`,
+        accessToken: `token_${resident.id}`,
         expiresInSec: 3600,
       },
     };
-    
+
     res.json(session);
   } catch (error) {
-    console.error('Patient alternative login error:', error);
+    console.error('Resident login error:', error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-export const handleRegisterStaff: RequestHandler = async (req, res) => {
+// ============================================
+// OFFICER LOGIN (Police or Immigration)
+// ============================================
+export const handleOfficerLogin: RequestHandler = async (req, res) => {
   try {
-    const {
-      hospitalName,
-      email,
-      password,
-      firstName,
-      lastName,
-      role = "admin",
-    }: RegisterStaffRequest = req.body;
-    
-    // Check if email already exists
-    const existingUserResult = await query(
-      'SELECT id FROM staff_users WHERE email = ?',
+    const { email, password }: LoginRequest = req.body;
+
+    // Try police officers first
+    let result = await query(
+      'SELECT id, officer_id, email, password_hash, rank as role, first_name, last_name, is_active, \'police\' as officer_type FROM officers WHERE email = $1',
       [email]
     );
-    
-    if (existingUserResult.rows.length > 0) {
-      return res.status(400).json({ error: "Email already registered" });
+
+    // If not found, try immigration officers
+    if (result.rows.length === 0) {
+      result = await query(
+        'SELECT id, officer_id, email, password_hash, office_location as role, first_name, last_name, is_active, \'immigration\' as officer_type FROM immigration_officers WHERE email = $1',
+        [email]
+      );
     }
-    
-    // Create hospital
-    const hospitalId = uuidv4();
-    const hospitalCode = createHospitalCode(hospitalName);
-    
-    await query(
-      `INSERT INTO hospitals (id, name, code, address, district, province, phone) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [hospitalId, hospitalName, hospitalCode, "", "", "", ""]
-    );
-    
-    // Create staff user
-    const userId = uuidv4();
-    const passwordHash = await hashPassword(password);
-    
-    await query(
-      `INSERT INTO staff_users (id, hospital_id, email, password_hash, role, first_name, last_name, phone, is_active) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [userId, hospitalId, email, passwordHash, role, firstName, lastName, "", true]
-    );
-    
-    const response: RegisterStaffResponse = {
-      userId,
-      hospitalId,
+
+    // If still not found, try admin users
+    if (result.rows.length === 0) {
+      result = await query(
+        'SELECT id, email, password_hash, role, first_name, last_name, is_active, \'admin\' as officer_type FROM admin_users WHERE email = $1',
+        [email]
+      );
+    }
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const officer = result.rows[0];
+
+    // Verify password
+    const isValidPassword = await verifyPassword(password, officer.password_hash);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    if (!officer.is_active) {
+      return res.status(401).json({ error: "Account is inactive" });
+    }
+
+    const session: AuthSession = {
+      userId: officer.id,
+      role: officer.officer_type,
+      tokens: {
+        accessToken: `token_${officer.id}`,
+        expiresInSec: 3600,
+      },
     };
-    
-    res.status(201).json(response);
+
+    res.json(session);
   } catch (error) {
-    console.error('Staff registration error:', error);
+    console.error('Officer login error:', error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
-// Note: Data is now stored in PostgreSQL database
-// No need to export in-memory stores

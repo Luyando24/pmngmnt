@@ -8,6 +8,7 @@ import {
 } from "./errors";
 import type {
   AuthSession,
+  Case,
   CreateCaseRequest,
   CreateCaseResponse,
   CreatePermitRequest,
@@ -34,7 +35,28 @@ import type {
   CreateWebsiteRequest,
   UpdateWebsiteRequest,
   UpdatePageRequest,
+  DashboardStats,
+  CreateFingerprintApplicationRequest,
+  FingerprintApplication,
+  CreateLostDocumentReportRequest,
+  LostDocumentReport,
+  Visa
 } from "@shared/api";
+
+export interface ImmigrationDashboardStats {
+  totalPermits?: number;
+  activePermits?: number;
+  expiredPermits?: number;
+  pendingApplications?: number;
+  totalVisas?: number;
+  activeVisas?: number;
+  expiredVisas?: number;
+  totalResidents?: number;
+}
+
+export interface ListVisasResponse {
+  items: Visa[];
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 const USE_MOCK =
@@ -47,7 +69,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
       ...init,
     });
-    
+
     if (!res.ok) {
       const text = await res.text();
       if (res.status === 401) {
@@ -55,7 +77,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       }
       throw new Error(text || `HTTP ${res.status}`);
     }
-    
+
     return res.json() as Promise<T>;
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -73,7 +95,15 @@ export const Api = {
       body: JSON.stringify(payload),
     });
   },
-  
+
+  async registerResident(payload: ResidentRegistrationRequest): Promise<AuthSession & { resident: Resident }> {
+    if (USE_MOCK) return mock.registerResident(payload);
+    return http<AuthSession & { resident: Resident }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Website Management API
   async createWebsite(payload: CreateWebsiteRequest): Promise<DepartmentWebsite> {
     if (USE_MOCK) return mock.createWebsite(payload);
@@ -83,41 +113,41 @@ export const Api = {
     });
   },
   async getWebsite(): Promise<DepartmentWebsite | null> {
-     if (USE_MOCK) return mock.getWebsite();
-     return http<DepartmentWebsite | null>("/websites");
-   },
-   async updateWebsite(payload: UpdateWebsiteRequest): Promise<DepartmentWebsite> {
-     if (USE_MOCK) return mock.updateWebsite(payload);
-     return http<DepartmentWebsite>("/websites", {
-       method: "PUT",
-       body: JSON.stringify(payload),
-     });
-   },
-   async publishWebsite(): Promise<{ success: boolean; message: string }> {
-     if (USE_MOCK) return mock.publishWebsite();
-     return http<{ success: boolean; message: string }>("/websites/publish", {
-       method: "POST",
-     });
-   },
-   async getThemes(): Promise<WebsiteTheme[]> {
-     if (USE_MOCK) return mock.getThemes();
-     return http<WebsiteTheme[]>("/themes");
-   },
-   async getPages(): Promise<WebsitePage[]> {
-     if (USE_MOCK) return mock.getPages();
-     return http<WebsitePage[]>("/pages");
-   },
-   async getPage(pageId: string): Promise<WebsitePage | null> {
-     if (USE_MOCK) return mock.getPage(pageId);
-     return http<WebsitePage | null>(`/pages/${pageId}`);
-   },
-   async updatePage(pageId: string, payload: UpdatePageRequest): Promise<WebsitePage> {
-     if (USE_MOCK) return mock.updatePage(pageId, payload);
-     return http<WebsitePage>(`/pages/${pageId}`, {
-       method: "PUT",
-       body: JSON.stringify(payload),
-     });
-   },
+    if (USE_MOCK) return mock.getWebsite();
+    return http<DepartmentWebsite | null>("/websites");
+  },
+  async updateWebsite(payload: UpdateWebsiteRequest): Promise<DepartmentWebsite> {
+    if (USE_MOCK) return mock.updateWebsite(payload);
+    return http<DepartmentWebsite>("/websites", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  async publishWebsite(): Promise<{ success: boolean; message: string }> {
+    if (USE_MOCK) return mock.publishWebsite();
+    return http<{ success: boolean; message: string }>("/websites/publish", {
+      method: "POST",
+    });
+  },
+  async getThemes(): Promise<WebsiteTheme[]> {
+    if (USE_MOCK) return mock.getThemes();
+    return http<WebsiteTheme[]>("/themes");
+  },
+  async getPages(): Promise<WebsitePage[]> {
+    if (USE_MOCK) return mock.getPages();
+    return http<WebsitePage[]>("/pages");
+  },
+  async getPage(pageId: string): Promise<WebsitePage | null> {
+    if (USE_MOCK) return mock.getPage(pageId);
+    return http<WebsitePage | null>(`/pages/${pageId}`);
+  },
+  async updatePage(pageId: string, payload: UpdatePageRequest): Promise<WebsitePage> {
+    if (USE_MOCK) return mock.updatePage(pageId, payload);
+    return http<WebsitePage>(`/pages/${pageId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
   async residentLogin(payload: ResidentLoginRequest): Promise<AuthSession> {
     if (USE_MOCK) return mock.residentLogin(payload);
     return http<AuthSession>("/auth/resident-login", {
@@ -133,13 +163,7 @@ export const Api = {
       body: JSON.stringify(payload),
     });
   },
-  async registerResident(payload: ResidentRegistrationRequest): Promise<UpsertResidentResponse> {
-    if (USE_MOCK) return mock.registerResident(payload);
-    return http<UpsertResidentResponse>("/residents/register", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
+
   async searchResident(
     payload: SearchResidentRequest,
   ): Promise<SearchResidentResponse> {
@@ -173,14 +197,62 @@ export const Api = {
       body: JSON.stringify(payload),
     });
   },
-  async listCases(residentId?: string): Promise<ListCasesResponse> {
-    if (USE_MOCK) return mock.listCases(residentId);
-    const url = residentId ? `/cases?residentId=${residentId}` : '/cases';
+  async getCaseStats(params: { stationId?: string; officerId?: string }): Promise<DashboardStats> {
+    if (USE_MOCK) return mock.getCaseStats(params);
+    const queryParams = new URLSearchParams();
+    if (params.stationId) queryParams.append("stationId", params.stationId);
+    if (params.officerId) queryParams.append("officerId", params.officerId);
+    return http<DashboardStats>(`/cases/stats?${queryParams.toString()}`);
+  },
+  async listCases(params?: string | { residentId?: string; stationId?: string; limit?: number }): Promise<ListCasesResponse> {
+    if (USE_MOCK) return mock.listCases(params);
+
+    let url = '/cases';
+    if (typeof params === 'string') {
+      url = `/cases?residentId=${params}`;
+    } else if (params) {
+      const queryParams = new URLSearchParams();
+      if (params.residentId) queryParams.append("residentId", params.residentId);
+      if (params.stationId) queryParams.append("stationId", params.stationId);
+      if (params.limit) queryParams.append("limit", params.limit.toString());
+      url = `/cases?${queryParams.toString()}`;
+    }
     return http<ListCasesResponse>(url);
   },
-  async listPermits(residentId: string): Promise<ListPermitsResponse> {
-     if (USE_MOCK) return mock.listPermits(residentId);
-     return http<ListPermitsResponse>(`/residents/${residentId}/permits`);
+  async listPermits(params?: string | { residentId?: string; officeId?: string; limit?: number }): Promise<ListPermitsResponse> {
+    if (USE_MOCK) return mock.listPermits(params);
+    let url = '/permits';
+    if (typeof params === 'string') {
+      url = `/residents/${params}/permits`;
+    } else if (params) {
+      const queryParams = new URLSearchParams();
+      if (params.residentId) queryParams.append("residentId", params.residentId);
+      if (params.officeId) queryParams.append("officeId", params.officeId);
+      if (params.limit) queryParams.append("limit", params.limit.toString());
+      url = `/permits?${queryParams.toString()}`;
+    }
+    return http<ListPermitsResponse>(url);
+  },
+  async getPermitStats(params: { officeId?: string; officerId?: string }): Promise<ImmigrationDashboardStats> {
+    if (USE_MOCK) return mock.getPermitStats(params);
+    const queryParams = new URLSearchParams();
+    if (params.officeId) queryParams.append("officeId", params.officeId);
+    if (params.officerId) queryParams.append("officerId", params.officerId);
+    return http<ImmigrationDashboardStats>(`/permits/stats?${queryParams.toString()}`);
+  },
+  async getVisaStats(params: { officeId?: string; officerId?: string }): Promise<ImmigrationDashboardStats> {
+    if (USE_MOCK) return mock.getVisaStats(params);
+    const queryParams = new URLSearchParams();
+    if (params.officeId) queryParams.append("officeId", params.officeId);
+    if (params.officerId) queryParams.append("officerId", params.officerId);
+    return http<ImmigrationDashboardStats>(`/visas/stats?${queryParams.toString()}`);
+  },
+  async listVisas(params?: { officeId?: string; limit?: number }): Promise<ListVisasResponse> {
+    if (USE_MOCK) return mock.listVisas(params);
+    const queryParams = new URLSearchParams();
+    if (params?.officeId) queryParams.append("officeId", params.officeId);
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    return http<ListVisasResponse>(`/visas?${queryParams.toString()}`);
   },
   async registerOfficer(
     payload: RegisterOfficerRequest,
@@ -195,6 +267,21 @@ export const Api = {
     return http<RegisterOfficerResponse>("/auth/register-officer", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+  async createFingerprintApplication(data: CreateFingerprintApplicationRequest): Promise<FingerprintApplication> {
+    if (USE_MOCK) return mock.createFingerprintApplication(data);
+    return http<FingerprintApplication>('/services/fingerprint', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async createLostDocumentReport(data: CreateLostDocumentReportRequest): Promise<LostDocumentReport> {
+    if (USE_MOCK) return mock.createLostDocumentReport(data);
+    return http<LostDocumentReport>('/services/lost-documents', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };
@@ -239,7 +326,7 @@ const mock = {
       stationId: user.stationId,
       immigrationOfficeId: user.immigrationOfficeId,
       tokens: { accessToken: uuidv4(), expiresInSec: 3600 },
-     };
+    };
   },
   async registerOfficer(
     payload: RegisterOfficerRequest,
@@ -248,12 +335,12 @@ const mock = {
       .where({ email: payload.email })
       .first();
     if (existing) throw new Error("Email already registered");
-    
+
     const now = new Date().toISOString();
     let stationId: string | undefined;
     let immigrationOfficeId: string | undefined;
-    
-    if (payload.departmentType === 'police') {
+
+    if (payload.stationName) {
       let station = await db.policeStations
         .where({ name: payload.stationName })
         .first();
@@ -269,7 +356,7 @@ const mock = {
         await db.policeStations.put(station);
       }
       stationId = station.id;
-    } else {
+    } else if (payload.immigrationOfficeName) {
       let office = await db.immigrationOffices
         .where({ name: payload.immigrationOfficeName })
         .first();
@@ -286,14 +373,14 @@ const mock = {
       }
       immigrationOfficeId = office.id;
     }
-    
+
     const user: Officer = {
       id: uuidv4(),
       stationId,
       immigrationOfficeId,
       email: payload.email,
       passwordHash: await sha256Hex(payload.password),
-      role: payload.role || "officer",
+      role: payload.role || (stationId ? "police_officer" : "immigration_officer"),
       firstName: payload.firstName,
       lastName: payload.lastName,
       badgeNumber: payload.badgeNumber,
@@ -305,10 +392,10 @@ const mock = {
     await db.officers.put(user);
     return { userId: user.id, stationId, immigrationOfficeId };
   },
-  async residentLogin({ nationalId }: ResidentLoginRequest): Promise<AuthSession> {
-    const r = await db.residents.where({ nationalId }).first();
+  async residentLogin({ identityCardId }: ResidentLoginRequest): Promise<AuthSession> {
+    const r = await db.residents.where({ identityCardId }).first();
     if (!r) {
-      throw new Error("Invalid national ID");
+      throw new Error("Invalid identity card ID");
     }
     const resident = r;
     if (!resident.cardQrData) {
@@ -320,7 +407,7 @@ const mock = {
       role: "resident",
       residentId: resident.id,
       tokens: { accessToken: uuidv4(), expiresInSec: 3600 },
-     };
+    };
   },
   async residentAlternativeLogin({ email, phone, password }: ResidentAlternativeLoginRequest): Promise<AuthSession> {
     let resident;
@@ -332,27 +419,27 @@ const mock = {
     if (!resident || !resident.hasPassword) {
       throw new Error("Invalid credentials");
     }
-    // Note: In a real implementation, verify password hash
     return {
       userId: resident.id,
       role: "resident",
       residentId: resident.id,
       tokens: { accessToken: uuidv4(), expiresInSec: 3600 },
-     };
+    };
   },
-  async registerResident(residentData: ResidentRegistrationRequest): Promise<UpsertResidentResponse> {
-    const existingResident = await db.residents.where({ nationalId: residentData.nationalId }).first();
-    if (existingResident) {
-      throw new Error("Resident with this National ID already exists");
+  async registerResident(residentData: ResidentRegistrationRequest): Promise<AuthSession & { resident: Resident }> {
+    if (residentData.nrc) {
+      const existingResident = await db.residents.where({ nrc: residentData.nrc }).first();
+      if (existingResident) {
+        throw new Error("Resident with this NRC already exists");
+      }
     }
-    
+
     const residentId = uuidv4();
-    const nationalCardId = generateNationalCardId();
     const cardId = uuidv4().replace(/-/g, "").slice(0, 16);
-    
+
     const resident: Resident = {
       id: residentId,
-      nationalId: residentData.nationalId,
+      nrc: residentData.nrc || "",
       passportNumber: residentData.passportNumber,
       firstName: residentData.firstName,
       lastName: residentData.lastName,
@@ -365,100 +452,35 @@ const mock = {
       occupation: residentData.occupation,
       maritalStatus: residentData.maritalStatus,
       nationality: residentData.nationality,
-      residencyStatus: residentData.residencyStatus,
+      residencyStatus: residentData.residencyStatus || "citizen",
       cardId,
       cardQrData: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
-    
+      identityCardId: residentData.nrc || residentData.passportNumber || "",
+      email: residentData.email,
+      hasPassword: !!residentData.password,
+    } as any;
+
     resident.cardQrData = await createCardQr(resident);
-    
+
     await db.residents.add(resident);
-    
-    return { resident };
+
+    return {
+      userId: resident.id,
+      role: "resident",
+      residentId: resident.id,
+      tokens: { accessToken: uuidv4(), expiresInSec: 3600 },
+      resident
+    };
   },
   async searchResident({
-    nationalId,
+    nrc,
     passportNumber,
     cardIdOrQr,
   }: SearchResidentRequest): Promise<SearchResidentResponse> {
-    // Initialize with sample residents if database is empty
-    const count = await db.residents.count();
-    if (count === 0) {
-      const sampleResidents: Resident[] = [
-        {
-          id: 'resident_001',
-          nationalId: 'NRC123456789',
-          passportNumber: 'ZM1234567',
-          firstName: 'Mary',
-          lastName: 'Banda',
-          gender: 'female',
-          dob: '1985-03-15',
-          phone: '+260977123456',
-          address: '123 Independence Avenue, Lusaka',
-          emergencyContactName: 'John Banda',
-          emergencyContactPhone: '+260966789012',
-          occupation: 'Teacher',
-          maritalStatus: 'married',
-          nationality: 'Zambian',
-          residencyStatus: 'citizen',
-          cardId: 'CARD12345678',
-          cardQrData: JSON.stringify({ nationalId: 'NRC123456789', cardId: 'CARD12345678' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        },
-        {
-          id: 'resident_002',
-          nationalId: 'NRC987654321',
-          passportNumber: 'ZM7654321',
-          firstName: 'Peter',
-          lastName: 'Mwanza',
-          gender: 'male',
-          dob: '1990-08-20',
-          phone: '+260955123456',
-          address: '456 Cairo Road, Lusaka',
-          emergencyContactName: 'Grace Mwanza',
-          emergencyContactPhone: '+260977654321',
-          occupation: 'Engineer',
-          maritalStatus: 'single',
-          nationality: 'Zambian',
-          residencyStatus: 'citizen',
-          cardId: 'CARD87654321',
-          cardQrData: JSON.stringify({ nationalId: 'NRC987654321', cardId: 'CARD87654321' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        },
-        {
-          id: 'resident_003',
-          nationalId: 'NRC555666777',
-          passportNumber: 'UK9876543',
-          firstName: 'Sarah',
-          lastName: 'Johnson',
-          gender: 'female',
-          dob: '1988-12-10',
-          phone: '+260966555777',
-          address: '789 Great East Road, Lusaka',
-          emergencyContactName: 'David Johnson',
-          emergencyContactPhone: '+260955666888',
-          occupation: 'Doctor',
-          maritalStatus: 'married',
-          nationality: 'British',
-          residencyStatus: 'permanent_resident',
-          cardId: 'CARD55566677',
-          cardQrData: JSON.stringify({ nationalId: 'NRC555666777', cardId: 'CARD55566677' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        }
-      ];
-      
-      for (const sampleResident of sampleResidents) {
-        await db.residents.put(sampleResident);
-      }
-    }
-
-    if (nationalId) {
-      const resident = await db.residents.where({ nationalId }).first();
+    if (nrc) {
+      const resident = await db.residents.where({ nrc }).first();
       return { resident: resident || undefined };
     }
     if (passportNumber) {
@@ -469,7 +491,6 @@ const mock = {
       try {
         let payload = cardIdOrQr;
         if (cardIdOrQr.startsWith("data:image")) {
-          // Not a decoded string, ignore for mock
           return { resident: undefined };
         }
         const parsed = JSON.parse(payload);
@@ -479,133 +500,35 @@ const mock = {
             .first();
           return { resident: resident || undefined };
         }
-      } catch {}
+      } catch { }
     }
     return { resident: undefined };
   },
-  async upsertResident({
-    resident,
-  }: UpsertResidentRequest): Promise<UpsertResidentResponse> {
-    // Initialize with sample residents if database is empty
-    const count = await db.residents.count();
-    if (count === 0) {
-      const sampleResidents: Resident[] = [
-        {
-          id: 'resident_001',
-          nationalId: 'NRC123456789',
-          passportNumber: 'ZM1234567',
-          firstName: 'Mary',
-          lastName: 'Banda',
-          gender: 'female',
-          dob: '1985-03-15',
-          phone: '+260977123456',
-          address: '123 Independence Avenue, Lusaka',
-          emergencyContactName: 'John Banda',
-          emergencyContactPhone: '+260966789012',
-          occupation: 'Teacher',
-          maritalStatus: 'married',
-          nationality: 'Zambian',
-          residencyStatus: 'citizen',
-          cardId: 'CARD12345678',
-          cardQrData: JSON.stringify({ nationalId: 'NRC123456789', cardId: 'CARD12345678' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        },
-        {
-          id: 'resident_002',
-          nationalId: 'NRC987654321',
-          passportNumber: 'ZM7654321',
-          firstName: 'Peter',
-          lastName: 'Mwanza',
-          gender: 'male',
-          dob: '1990-08-20',
-          phone: '+260955123456',
-          address: '456 Cairo Road, Lusaka',
-          emergencyContactName: 'Grace Mwanza',
-          emergencyContactPhone: '+260977654321',
-          occupation: 'Engineer',
-          maritalStatus: 'single',
-          nationality: 'Zambian',
-          residencyStatus: 'citizen',
-          cardId: 'CARD87654321',
-          cardQrData: JSON.stringify({ nationalId: 'NRC987654321', cardId: 'CARD87654321' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        },
-        {
-          id: 'resident_003',
-          nationalId: 'NRC555666777',
-          passportNumber: 'UK9876543',
-          firstName: 'Sarah',
-          lastName: 'Johnson',
-          gender: 'female',
-          dob: '1988-12-10',
-          phone: '+260966555777',
-          address: '789 Great East Road, Lusaka',
-          emergencyContactName: 'David Johnson',
-          emergencyContactPhone: '+260955666888',
-          occupation: 'Doctor',
-          maritalStatus: 'married',
-          nationality: 'British',
-          residencyStatus: 'permanent_resident',
-          cardId: 'CARD55566677',
-          cardQrData: JSON.stringify({ nationalId: 'NRC555666777', cardId: 'CARD55566677' }),
-          createdAt: '2024-01-01T00:00:00Z',
-          updatedAt: '2024-01-01T00:00:00Z'
-        }
-      ];
-      
-      for (const sampleResident of sampleResidents) {
-        await db.residents.put(sampleResident);
-      }
-    }
-
-    const existing = resident.id ? await db.residents.get(resident.id) : undefined;
-    const id = existing?.id || uuidv4();
+  async upsertResident({ resident }: UpsertResidentRequest): Promise<UpsertResidentResponse> {
     const now = new Date().toISOString();
-    const full: Resident = {
-      id,
-      nationalId: resident.nationalId,
-      passportNumber: resident.passportNumber || existing?.passportNumber,
-      firstName: resident.firstName || existing?.firstName || "",
-      lastName: resident.lastName || existing?.lastName || "",
-      gender: resident.gender || existing?.gender,
-      dob: resident.dob || existing?.dob,
-      phone: resident.phone || existing?.phone,
-      address: resident.address || existing?.address,
-      emergencyContactName:
-        resident.emergencyContactName || existing?.emergencyContactName,
-      emergencyContactPhone:
-        resident.emergencyContactPhone || existing?.emergencyContactPhone,
-      occupation: resident.occupation || existing?.occupation,
-      maritalStatus: resident.maritalStatus || existing?.maritalStatus,
-      nationality: resident.nationality || existing?.nationality,
-      residencyStatus: resident.residencyStatus || existing?.residencyStatus,
-      cardId: existing?.cardId || uuidv4().replace(/-/g, "").slice(0, 16),
-      cardQrData: existing?.cardQrData || "",
-      createdAt: existing?.createdAt || now,
-      updatedAt: now,
-    };
-    if (!full.cardQrData) full.cardQrData = await createCardQr(full);
-    await db.residents.put(full);
-    return { resident: full };
+    if (!resident.id) resident.id = uuidv4();
+    if (!resident.createdAt) resident.createdAt = now;
+    resident.updatedAt = now;
+    if (!resident.cardQrData) resident.cardQrData = await createCardQr(resident as any);
+
+    await db.residents.put(resident as any);
+    return { resident: resident as any };
   },
   async createCase(req: CreateCaseRequest): Promise<CreateCaseResponse> {
     const now = new Date().toISOString();
     const caseRecord = {
       id: uuidv4(),
-      residentId: req.residentId,
+      residentId: req.reporterId,
       stationId: req.stationId,
-      officerId: req.officerId,
       caseNumber: `CASE-${Date.now()}`,
       title: req.title,
       description: req.description,
       category: req.category,
       priority: req.priority,
-      status: "open" as const,
+      status: "reported" as const,
       createdAt: now,
       updatedAt: now,
-    };
+    } as any;
     await db.cases.put(caseRecord);
     return { case: caseRecord };
   },
@@ -615,33 +538,113 @@ const mock = {
       id: uuidv4(),
       residentId: req.residentId,
       immigrationOfficeId: req.immigrationOfficeId,
-      officerId: req.officerId,
       permitNumber: `PERMIT-${Date.now()}`,
       type: req.type,
-      description: req.description,
       validFrom: req.validFrom,
       validUntil: req.validUntil,
-      status: "active" as const,
+      status: "pending" as const,
       createdAt: now,
       updatedAt: now,
-    };
+    } as any;
     await db.permits.put(permit);
     return { permit };
   },
-  async listCases(residentId?: string): Promise<ListCasesResponse> {
-    let query = db.cases.orderBy('updatedAt').reverse();
-    if (residentId) {
-      query = db.cases.where({ residentId }).reverse().sortBy('updatedAt');
+  async listCases(params?: string | { residentId?: string; stationId?: string; limit?: number }): Promise<ListCasesResponse> {
+    let items: Case[];
+    let residentId: string | undefined;
+
+    if (typeof params === 'string') {
+      residentId = params;
+    } else if (params) {
+      residentId = params.residentId;
     }
-    const items = await query.toArray();
+
+    if (residentId) {
+      items = await db.cases.where({ residentId }).reverse().sortBy('updatedAt');
+    } else {
+      items = await db.cases.orderBy('updatedAt').reverse().toArray();
+    }
+
+    if (params && typeof params !== 'string' && params.limit) {
+      items = items.slice(0, params.limit);
+    }
+
     return { items };
   },
-  async listPermits(residentId: string): Promise<ListPermitsResponse> {
-    const items = await db.permits
-      .where({ residentId })
-      .reverse()
-      .sortBy("updatedAt");
-    return { items };
+  async listPermits(params?: string | { residentId?: string; officeId?: string; limit?: number }): Promise<ListPermitsResponse> {
+    let query = db.permits.orderBy('updatedAt').reverse();
+    if (typeof params === 'string') {
+      query = db.permits.where({ residentId: params }).reverse().sortBy('updatedAt') as any;
+    } else if (params) {
+      if (params.residentId) {
+        query = db.permits.where({ residentId: params.residentId }).reverse().sortBy('updatedAt') as any;
+      } else if (params.officeId) {
+        // Dexie might not support complex filtering easily without compound index, but for mock:
+        const all = await db.permits.toArray();
+        const filtered = all.filter(p => p.immigrationOfficeId === params.officeId);
+        return { items: filtered.slice(0, params.limit || 50) };
+      }
+    }
+    const items = await query.toArray();
+    return { items: params && typeof params !== 'string' && params.limit ? items.slice(0, params.limit) : items };
+  },
+  async getPermitStats(params: { officeId?: string; officerId?: string }): Promise<ImmigrationDashboardStats> {
+    const permits = await db.permits.toArray();
+    const filteredPermits = params.officeId ? permits.filter(p => p.immigrationOfficeId === params.officeId) : permits;
+
+    return {
+      totalPermits: filteredPermits.length,
+      activePermits: filteredPermits.filter(p => p.status === 'approved').length,
+      expiredPermits: filteredPermits.filter(p => new Date(p.validUntil) < new Date()).length,
+      pendingApplications: 0, // Mock
+      totalResidents: await db.residents.count()
+    };
+  },
+  async getVisaStats(params: { officeId?: string; officerId?: string }): Promise<ImmigrationDashboardStats> {
+    const visas = await db.visas.toArray();
+    const filteredVisas = params.officeId ? visas.filter(v => v.immigrationOfficeId === params.officeId) : visas;
+
+    return {
+      totalVisas: filteredVisas.length,
+      activeVisas: filteredVisas.filter(v => v.status === 'approved').length,
+      expiredVisas: filteredVisas.filter(v => {
+        const expiry = (v as any).expiryDate || (v as any).validUntil;
+        return expiry ? new Date(expiry) < new Date() : false;
+      }).length
+    };
+  },
+  async listVisas(params?: { officeId?: string; limit?: number }): Promise<ListVisasResponse> {
+    let visas = await db.visas.toArray();
+    if (params?.officeId) {
+      visas = visas.filter(v => v.immigrationOfficeId === params.officeId);
+    }
+    // Sort by updatedAt desc
+    visas.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    if (params?.limit) {
+      visas = visas.slice(0, params.limit);
+    }
+    return { items: visas };
+  },
+  async getCaseStats(params: { stationId?: string; officerId?: string }): Promise<DashboardStats> {
+    const cases = await db.cases.toArray();
+    const totalCases = cases.length;
+    const openCases = cases.filter(c => c.status === 'reported').length;
+    const inProgressCases = cases.filter(c => c.status === 'investigating').length;
+    const closedCases = cases.filter(c => c.status === 'closed' || c.status === 'resolved').length;
+    const highPriorityCases = cases.filter(c => c.priority === 'high' || c.priority === 'urgent').length;
+    const mediumPriorityCases = cases.filter(c => c.priority === 'medium').length;
+    const lowPriorityCases = cases.filter(c => c.priority === 'low').length;
+
+    return {
+      totalCases,
+      openCases,
+      inProgressCases,
+      closedCases,
+      highPriorityCases,
+      mediumPriorityCases,
+      lowPriorityCases
+    };
   },
 
   // Website Management Mock API
@@ -649,17 +652,15 @@ const mock = {
     const now = new Date().toISOString();
     const website: DepartmentWebsite = {
       id: uuidv4(),
-      department_id: payload.departmentId,
-      name: payload.name,
-      domain: payload.domain,
+      stationId: 'mock-station-id',
       subdomain: payload.subdomain,
       title: payload.title,
       description: payload.description,
-      theme_id: payload.themeId,
-      is_published: false,
-      created_at: now,
-      updated_at: now,
-    };
+      themeId: payload.themeId,
+      isPublished: false,
+      createdAt: now,
+      updatedAt: now,
+    } as any;
     await db.websites.put(website);
     return website;
   },
@@ -673,37 +674,37 @@ const mock = {
     const updated = {
       ...website,
       ...payload,
-      updated_at: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     await db.websites.put(updated);
     return updated;
   },
   async publishWebsite(websiteId?: string): Promise<{ success: boolean; message: string; deploymentUrl?: string }> {
-    const website = websiteId ? 
-      await db.websites.get(websiteId) : 
+    const website = websiteId ?
+      await db.websites.get(websiteId) :
       await db.websites.toCollection().first();
-    
+
     if (!website) throw new Error("Website not found");
-    
+
     // Simulate deployment process
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     // Generate deployment URL based on domain settings
-    const deploymentUrl = website.domain ? 
-      `https://${website.domain}` : 
+    const deploymentUrl = website.domainName ?
+      `https://${website.domainName}` :
       `https://${website.subdomain}.healthcaresite.com`;
-    
+
     // Update website status
-    await db.websites.update(website.id, { 
-      is_published: true,
-      published_at: new Date().toISOString(),
-      deployment_url: deploymentUrl
+    await db.websites.update(website.id, {
+      isPublished: true,
+      publishedAt: new Date().toISOString(),
+      deploymentUrl
     });
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       message: "Website published successfully",
-      deploymentUrl 
+      deploymentUrl
     };
   },
   async getThemes(): Promise<WebsiteTheme[]> {
@@ -712,175 +713,113 @@ const mock = {
         id: "modern-hospital",
         name: "Modern Hospital",
         description: "Clean and professional design for general hospitals",
-        preview_image: "/themes/modern-hospital-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#3b82f6",
-          secondaryColor: "#64748b",
-          accentColor: "#10b981",
-          backgroundColor: "#ffffff",
-          textColor: "#1f2937",
-          fontFamily: "Inter, sans-serif",
-          headerHeight: "80px",
-          borderRadius: "8px"
-        }),
-        layout_config: JSON.stringify({
+        previewImageUrl: "/themes/modern-hospital-preview.jpg",
+        cssTemplate: "",
+        layoutConfig: {
           headerStyle: "modern",
           footerStyle: "minimal",
           sections: ["hero", "services", "doctors", "testimonials", "contact"],
           heroLayout: "centered",
           servicesLayout: "grid-3"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
+        },
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any,
       {
         id: "pediatric-care",
         name: "Pediatric Care",
         description: "Friendly and colorful design for children's hospitals",
-        preview_image: "/themes/pediatric-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#f59e0b",
-          secondaryColor: "#06b6d4",
-          accentColor: "#ec4899",
-          backgroundColor: "#fef3c7",
-          textColor: "#374151",
-          fontFamily: "Nunito, sans-serif",
-          headerHeight: "90px",
-          borderRadius: "16px"
-        }),
-        layout_config: JSON.stringify({
+        previewImageUrl: "/themes/pediatric-preview.jpg",
+        cssTemplate: "",
+        layoutConfig: {
           headerStyle: "playful",
           footerStyle: "colorful",
           sections: ["hero", "services", "fun-facts", "doctors", "parents-info", "contact"],
           heroLayout: "illustration",
           servicesLayout: "cards-colorful"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: "dental-clinic",
-        name: "Dental Clinic",
-        description: "Professional and trustworthy design for dental practices",
-        preview_image: "/themes/dental-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#0ea5e9",
-          secondaryColor: "#475569",
-          accentColor: "#22c55e",
-          backgroundColor: "#f8fafc",
-          textColor: "#1e293b",
-          fontFamily: "Poppins, sans-serif",
-          headerHeight: "75px",
-          borderRadius: "6px"
-        }),
-        layout_config: JSON.stringify({
-          headerStyle: "professional",
-          footerStyle: "detailed",
-          sections: ["hero", "services", "technology", "team", "before-after", "contact"],
-          heroLayout: "split",
-          servicesLayout: "list-detailed"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: "specialty-care",
-        name: "Specialty Care",
-        description: "Elegant design for specialized medical centers",
-        preview_image: "/themes/specialty-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#7c3aed",
-          secondaryColor: "#6b7280",
-          accentColor: "#f59e0b",
-          backgroundColor: "#ffffff",
-          textColor: "#111827",
-          fontFamily: "Merriweather, serif",
-          headerHeight: "85px",
-          borderRadius: "4px"
-        }),
-        layout_config: JSON.stringify({
-          headerStyle: "elegant",
-          footerStyle: "comprehensive",
-          sections: ["hero", "specialties", "expertise", "research", "team", "contact"],
-          heroLayout: "minimal",
-          servicesLayout: "grid-2"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: "wellness-center",
-        name: "Wellness Center",
-        description: "Calming and natural design for wellness and preventive care",
-        preview_image: "/themes/wellness-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#059669",
-          secondaryColor: "#6b7280",
-          accentColor: "#84cc16",
-          backgroundColor: "#f0fdf4",
-          textColor: "#065f46",
-          fontFamily: "Source Sans Pro, sans-serif",
-          headerHeight: "70px",
-          borderRadius: "12px"
-        }),
-        layout_config: JSON.stringify({
-          headerStyle: "natural",
-          footerStyle: "organic",
-          sections: ["hero", "wellness-programs", "holistic-care", "practitioners", "testimonials", "contact"],
-          heroLayout: "nature-focused",
-          servicesLayout: "organic-grid"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: "emergency-care",
-        name: "Emergency Care",
-        description: "Urgent and accessible design for emergency medical services",
-        preview_image: "/themes/emergency-preview.jpg",
-        css_variables: JSON.stringify({
-          primaryColor: "#dc2626",
-          secondaryColor: "#374151",
-          accentColor: "#fbbf24",
-          backgroundColor: "#ffffff",
-          textColor: "#1f2937",
-          fontFamily: "Roboto, sans-serif",
-          headerHeight: "60px",
-          borderRadius: "4px"
-        }),
-        layout_config: JSON.stringify({
-          headerStyle: "urgent",
-          footerStyle: "essential",
-          sections: ["hero", "emergency-services", "quick-access", "location", "contact"],
-          heroLayout: "emergency-focused",
-          servicesLayout: "priority-list"
-        }),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
+        },
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any,
     ];
   },
   async getPages(): Promise<WebsitePage[]> {
-    const pages = await db.websitePages.toArray();
-    return pages;
+    return [
+      {
+        id: "home",
+        websiteId: "default",
+        title: "Home",
+        slug: "home",
+        content: {
+          hero: {
+            title: "Welcome to City General Hospital",
+            subtitle: "Providing world-class healthcare with compassion",
+            ctaText: "Book Appointment",
+            ctaLink: "/appointments"
+          }
+        },
+        isPublished: true,
+        sortOrder: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any,
+      {
+        id: "about",
+        websiteId: "default",
+        title: "About Us",
+        slug: "about",
+        content: {
+          hero: {
+            title: "About Our Hospital",
+            subtitle: "Serving the community for over 50 years",
+          }
+        },
+        isPublished: true,
+        sortOrder: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any
+    ];
   },
   async getPage(pageId: string): Promise<WebsitePage | null> {
-    const page = await db.websitePages.get(pageId);
-    return page || null;
+    const pages = await this.getPages();
+    return pages.find(p => p.id === pageId) || null;
   },
   async updatePage(pageId: string, payload: UpdatePageRequest): Promise<WebsitePage> {
-    const page = await db.websitePages.get(pageId);
+    const pages = await this.getPages();
+    const page = pages.find(p => p.id === pageId);
     if (!page) throw new Error("Page not found");
-    const updated = {
+
+    return {
       ...page,
       ...payload,
-      updated_at: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    await db.websitePages.put(updated);
-    return updated;
   },
-  
 
+  async createFingerprintApplication(data: CreateFingerprintApplicationRequest): Promise<FingerprintApplication> {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    return {
+      id: uuidv4(),
+      ...data,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  },
+
+  async createLostDocumentReport(data: CreateLostDocumentReportRequest): Promise<LostDocumentReport> {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    return {
+      id: uuidv4(),
+      ...data,
+      status: 'reported',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  },
 };
 
 export async function enqueueSync(op: Parameters<typeof db.syncQueue.add>[0]) {

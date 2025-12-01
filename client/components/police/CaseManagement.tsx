@@ -53,7 +53,7 @@ const CaseManagement: React.FC = () => {
     try {
       setLoading(true);
       const response: ListCasesResponse = await Api.listCases();
-      setCases(response.cases || []);
+      setCases(response.items || []);
     } catch (error) {
       console.error('Failed to load cases:', error);
     } finally {
@@ -109,8 +109,8 @@ const CaseManagement: React.FC = () => {
 
   const filteredCases = cases.filter(caseItem => {
     const matchesSearch = caseItem.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         caseItem.caseNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         caseItem.description.toLowerCase().includes(searchTerm.toLowerCase());
+      caseItem.caseNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      caseItem.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || caseItem.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || caseItem.priority === priorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;

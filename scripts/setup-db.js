@@ -1,11 +1,13 @@
-// Database setup script for Flova
+// Database setup script for IPIMS
 // Run this after installing PostgreSQL locally
 
-import mysql from 'mysql2/promise';
+import pg from 'pg';
+const { Pool } = pg;
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import bcrypt from 'bcrypt';
 
 // Load environment variables
 dotenv.config();
@@ -13,110 +15,141 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// MySQL database configuration
+// PostgreSQL database configuration
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'password',
   // Don't specify database initially - we'll create it
 };
 
-const targetDbName = process.env.DB_NAME || 'flova_db';
+const targetDbName = process.env.DB_NAME || 'ipims_db';
 
 async function setupDatabase() {
-  console.log('🚀 Setting up Flova MySQL database...');
-  
+  console.log('🚀 Setting up IPIMS PostgreSQL database...');
+
   try {
-    // Connect to MySQL server (without specifying database)
-    console.log(`🔍 Connecting to MySQL as user: ${dbConfig.user}`);
-    const connection = await mysql.createConnection(dbConfig);
-    console.log(`✅ Successfully connected to MySQL server`);
-    
+    // Connect to PostgreSQL server (default postgres database)
+    console.log(`🔍 Connecting to PostgreSQL as user: ${dbConfig.user}`);
+    const pool = new Pool({
+      ...dbConfig,
+      database: 'postgres' // Connect to default database first
+    });
+
+    console.log(`✅ Successfully connected to PostgreSQL server`);
+
     // Create database if it doesn't exist
     console.log(`📝 Creating database ${targetDbName} if it doesn't exist...`);
-    await connection.execute(`CREATE DATABASE IF NOT EXISTS \`${targetDbName}\``);
-    console.log(`✅ Database ${targetDbName} is ready`);
-    
-    // Close the initial connection
-    await connection.end();
-    
+    try {
+      await pool.query(`CREATE DATABASE ${targetDbName}`);
+      console.log(`✅ Database ${targetDbName} created`);
+    } catch (err) {
+      if (err.code === '42P04') {
+        console.log(`ℹ️ Database ${targetDbName} already exists`);
+      } else {
+        throw err;
+      }
+    }
+
+    await pool.end();
+
     // Connect to the specific database
-    const dbConnection = await mysql.createConnection({
+    const dbPool = new Pool({
       ...dbConfig,
       database: targetDbName
     });
-    
+
     console.log(`✅ Connected to ${targetDbName} database`);
-    
-    // Read and execute the MySQL schema
-    const schemaPath = path.join(__dirname, '..', 'db', 'schema-mysql.sql');
+
+    // Read and execute the PostgreSQL schema
+    const schemaPath = path.join(__dirname, '..', 'db', 'schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
-    
-    console.log('📋 Dropping existing tables if they exist...');
-    
-    // Drop tables in reverse order to handle foreign key constraints
-    const dropStatements = [
-      'DROP TABLE IF EXISTS test_results',
-      'DROP TABLE IF EXISTS lab_tests',
-      'DROP TABLE IF EXISTS prescriptions',
-      'DROP TABLE IF EXISTS medical_records',
-      'DROP TABLE IF EXISTS patients',
-      'DROP TABLE IF EXISTS staff_users',
-      'DROP TABLE IF EXISTS hospitals'
-    ];
-    
-    for (const dropStmt of dropStatements) {
-      await dbConnection.execute(dropStmt);
-    }
-    
+
     console.log('📋 Executing database schema...');
-    
-    // Split schema into individual statements and execute them
-    const statements = schema.split(';').filter(stmt => stmt.trim().length > 0);
-    
-    for (const statement of statements) {
-      if (statement.trim()) {
-        await dbConnection.execute(statement.trim());
-      }
-    }
-    
+
+    await dbPool.query(schema);
+
+    console.log('✅ Database schema executed successfully!');
+
     // Insert sample data
     console.log('🌱 Inserting sample data...');
-    
-    // Create a sample hospital
-    const hospitalId = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
-    await dbConnection.execute(`
-      INSERT INTO hospitals (id, name, code, address, district, province, phone)
-      VALUES (?, 'Flova Demo Clinic', 'DEMO01', '123 Health Street', 'Lusaka', 'Lusaka', '+260-123-456789')
-      ON DUPLICATE KEY UPDATE name = name
-    `, [hospitalId]);
-    
+
     // Create a sample admin user
-    const bcrypt = await import('bcrypt');
-    const adminPassword = await bcrypt.default.hash('admin123', 12);
-    const adminId = 'a47ac10b-58cc-4372-a567-0e02b2c3d480';
-    
-    await dbConnection.execute(`
-      INSERT INTO staff_users (id, hospital_id, email, password_hash, role, first_name, last_name, is_active)
-      VALUES (?, ?, 'admin@flova.demo', ?, 'admin', 'Admin', 'User', true)
-      ON DUPLICATE KEY UPDATE email = email
-    `, [adminId, hospitalId, adminPassword]);
-    
+    const adminPassword = await bcrypt.hash('admin123', 12);
+    const adminEmail = 'admin@ipims.zm';
+
+    try {
+      await dbPool.query(`
+        INSERT INTO admin_users (email, password_hash, first_name, last_name, role, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (email) DO NOTHING
+      `, [adminEmail, adminPassword, 'System', 'Administrator', 'super_admin', true]);
+      console.log('✅ Admin user created');
+    } catch (err) {
+      console.log('ℹ️ Admin user already exists');
+    }
+
+    // Create sample officers
+    const officerPassword = await bcrypt.hash('officer123', 12);
+
+    try {
+      await dbPool.query(`
+        INSERT INTO officers (officer_id, first_name, last_name, rank, department, station, email, password_hash, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (email) DO NOTHING
+      `, ['OFF001', 'John', 'Mwansa', 'inspector', 'Criminal Investigation', 'Lusaka Central', 'officer@ipims.zm', officerPassword, true]);
+      console.log('✅ Sample police officer created');
+    } catch (err) {
+      console.log('ℹ️ Sample police officer already exists');
+    }
+
+    // Create sample immigration officer
+    const immigrationPassword = await bcrypt.hash('immigration123', 12);
+
+    try {
+      await dbPool.query(`
+        INSERT INTO immigration_officers (officer_id, first_name, last_name, office_location, email, password_hash, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (email) DO NOTHING
+      `, ['IMM001', 'Sarah', 'Banda', 'Kenneth Kaunda International Airport', 'immigration@ipims.zm', immigrationPassword, true]);
+      console.log('✅ Sample immigration officer created');
+    } catch (err) {
+      console.log('ℹ️ Sample immigration officer already exists');
+    }
+
     console.log('✅ Sample data inserted');
-    console.log('✅ Database schema executed successfully!');
-    console.log('🎉 Flova MySQL database setup complete!');
+    console.log('🎉 IPIMS PostgreSQL database setup complete!');
     console.log('');
-    console.log('Sample login credentials:');
-    console.log('Email: admin@flova.demo');
-    console.log('Password: admin123');
-    
-    await dbConnection.end();
-    
+    console.log('📝 Sample login credentials:');
+    console.log('┌─────────────────────────────────────┐');
+    console.log('│ Admin Login:                        │');
+    console.log('│ Email: admin@ipims.zm               │');
+    console.log('│ Password: admin123                  │');
+    console.log('├─────────────────────────────────────┤');
+    console.log('│ Police Officer Login:               │');
+    console.log('│ Email: officer@ipims.zm             │');
+    console.log('│ Password: officer123                │');
+    console.log('├─────────────────────────────────────┤');
+    console.log('│ Immigration Officer Login:          │');
+    console.log('│ Email: immigration@ipims.zm         │');
+    console.log('│ Password: immigration123            │');
+    console.log('└─────────────────────────────────────┘');
+    console.log('');
+    console.log('💡 Next steps:');
+    console.log('  1. Run: npm run dev');
+    console.log('  2. Open: http://localhost:5173');
+    console.log('');
+
+    await dbPool.end();
+
   } catch (error) {
-    console.error('❌ Error setting up MySQL database:', error.message);
-    console.log('💡 Make sure MySQL is installed and running');
-    console.log('💡 You can download MySQL from: https://dev.mysql.com/downloads/mysql/');
+    console.error('❌ Error setting up PostgreSQL database:', error.message);
+    console.log('💡 Make sure PostgreSQL is installed and running');
+    console.log('💡 Windows: Check Services for "postgresql-x64-XX"');
+    console.log('💡 Download PostgreSQL from: https://www.postgresql.org/download/');
+    console.log('');
+    console.log('Full error:', error);
     process.exit(1);
   }
 }

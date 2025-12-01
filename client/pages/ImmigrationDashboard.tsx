@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, Users, FileCheck, Globe, BarChart3, Clock, MapPin, Search } from 'lucide-react';
+import { CreditCard, Users, FileCheck, Globe, BarChart3, Clock, MapPin, Search, Bell, Settings, FileText, Shield, AlertTriangle, FileBarChart, Camera } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,23 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
-import { Api } from '@/lib/api';
-import type { Permit, Visa, Resident } from '@shared/api';
-
-interface DashboardStats {
-  totalPermits: number;
-  activePermits: number;
-  expiredPermits: number;
-  pendingApplications: number;
-  totalVisas: number;
-  activeVisas: number;
-  expiredVisas: number;
-  totalResidents: number;
-}
+import { Api, ImmigrationDashboardStats } from '@/lib/api';
+import type { Permit, Visa } from '@shared/api';
 
 export default function ImmigrationDashboard() {
   const { session } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<ImmigrationDashboardStats | null>(null);
   const [recentPermits, setRecentPermits] = useState<Permit[]>([]);
   const [recentVisas, setRecentVisas] = useState<Visa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,34 +24,34 @@ export default function ImmigrationDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       // Load permit statistics
-      const permitStatsResponse = await api.getPermitStats({
-        officeId: session?.officeId,
+      const permitStatsResponse = await Api.getPermitStats({
+        officeId: session?.immigrationOfficeId,
         officerId: session?.userId
       });
-      
+
       // Load visa statistics
-      const visaStatsResponse = await api.getVisaStats({
-        officeId: session?.officeId,
+      const visaStatsResponse = await Api.getVisaStats({
+        officeId: session?.immigrationOfficeId,
         officerId: session?.userId
       });
-      
+
       setStats({
         ...permitStatsResponse,
         ...visaStatsResponse
       });
-      
+
       // Load recent permits
-      const permitsResponse = await api.listPermits({
-        officeId: session?.officeId,
+      const permitsResponse = await Api.listPermits({
+        officeId: session?.immigrationOfficeId,
         limit: 5
       });
       setRecentPermits(permitsResponse.items);
-      
+
       // Load recent visas
-      const visasResponse = await api.listVisas({
-        officeId: session?.officeId,
+      const visasResponse = await Api.listVisas({
+        officeId: session?.immigrationOfficeId,
         limit: 5
       });
       setRecentVisas(visasResponse.items);
@@ -88,9 +77,11 @@ export default function ImmigrationDashboard() {
     switch (type) {
       case 'work': return 'default';
       case 'student': return 'secondary';
+      case 'study': return 'secondary';
       case 'tourist': return 'outline';
       case 'business': return 'default';
       case 'transit': return 'secondary';
+      case 'residence': return 'default';
       default: return 'outline';
     }
   };
@@ -114,72 +105,177 @@ export default function ImmigrationDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sticky Top Header */}
-      <div className="sticky top-0 z-50 bg-background border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Immigration Dashboard</h1>
-              <p className="text-sm text-muted-foreground">
-                Welcome back, Immigration Officer
-              </p>
+      {/* Enhanced Sticky Header */}
+      <div className="sticky top-0 z-50 border-b bg-gradient-to-r from-card via-card to-card/95 backdrop-blur-xl supports-[backdrop-filter]:bg-card/60 shadow-sm">
+        <div className="flex items-center justify-between px-6 py-3">
+          {/* Logo and Title Section */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <img
+                src="/images/logo.png"
+                alt="IPIMS Logo"
+                className="h-12 w-12 object-contain"
+              />
+              <div className="border-l pl-3">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  Immigration Portal
+                </h1>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Integrated Police & Immigration Management
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">Immigration Officer</Badge>
-              <Badge variant="secondary">{session?.userId?.slice(0, 8) || 'IO-001'}</Badge>
-              <Button variant="outline" size="sm">
-                <Search className="h-4 w-4 mr-2" />
-                Search
-              </Button>
+          </div>
+
+          {/* Centered Search Box */}
+          <div className="flex-1 flex justify-center px-8">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 hover:bg-accent transition-colors min-w-[200px] md:min-w-[300px]"
+            >
+              <Search className="h-4 w-4" />
+              <span className="hidden md:inline">Search visas, permits, residents...</span>
+              <span className="md:hidden">Search</span>
+            </Button>
+          </div>
+
+          {/* Action Buttons Section */}
+          <div className="flex items-center gap-3">
+            {/* Notifications */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="relative hover:bg-accent transition-colors"
+            >
+              <Bell className="h-4 w-4" />
+              <span className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                5
+              </span>
+            </Button>
+
+            {/* User Info */}
+            <div className="flex items-center gap-2 pl-3 border-l">
+              <div className="hidden sm:flex flex-col items-end">
+                <p className="text-sm font-semibold">Officer</p>
+                <p className="text-xs text-muted-foreground">
+                  {session?.userId?.slice(0, 8) || 'IO-001'}
+                </p>
+              </div>
+              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center ring-2 ring-primary/20">
+                <Globe className="h-5 w-5 text-primary" />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Tabs Container */}
-      <Tabs defaultValue="overview" orientation="vertical" className="flex">
+      <Tabs defaultValue="overview" className="flex h-[calc(100vh-73px)]">
         {/* Sticky Left Navigation */}
-        <div className="sticky top-[73px] h-[calc(100vh-73px)] w-64 bg-muted/30 border-r overflow-y-auto">
-          <div className="p-4">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-4">NAVIGATION</h3>
-            <TabsList className="grid w-full grid-rows-4 h-auto bg-transparent p-0 gap-1">
-              <TabsTrigger 
-                value="overview" 
-                className="w-full justify-start px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger 
-                value="permits" 
-                className="w-full justify-start px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Recent Permits
-              </TabsTrigger>
-              <TabsTrigger 
-                value="visas" 
-                className="w-full justify-start px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                <Globe className="h-4 w-4 mr-2" />
-                Recent Visas
-              </TabsTrigger>
-              <TabsTrigger 
-                value="analytics" 
-                className="w-full justify-start px-3 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Analytics
-              </TabsTrigger>
-            </TabsList>
+        <div className="sticky top-[73px] h-[calc(100vh-73px)] w-72 border-r bg-gradient-to-b from-card to-card/50 backdrop-blur">
+          <div className="flex flex-col h-full">
+            {/* Navigation Items */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 pt-6">
+              <TabsList className="grid w-full grid-cols-1 gap-1 h-auto bg-transparent">
+                {/* Main Section */}
+                <div className="space-y-1">
+                  <p className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Main
+                  </p>
+                  <TabsTrigger
+                    value="overview"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span className="font-medium">Overview</span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="visas"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <Globe className="h-4 w-4" />
+                    <span className="font-medium">Visas</span>
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      {stats?.totalVisas || 0}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="permits"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <FileCheck className="h-4 w-4" />
+                    <span className="font-medium">Permits</span>
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      {stats?.totalPermits || 0}
+                    </Badge>
+                  </TabsTrigger>
+                </div>
+
+                {/* Services Section */}
+                <div className="space-y-1 pt-4 border-t">
+                  <p className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Services
+                  </p>
+                  <TabsTrigger
+                    value="passports"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    <span className="font-medium">Passports</span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="residency"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <Users className="h-4 w-4" />
+                    <span className="font-medium">Residency</span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="analytics"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <FileBarChart className="h-4 w-4" />
+                    <span className="font-medium">Analytics</span>
+                  </TabsTrigger>
+                </div>
+
+                {/* System Section */}
+                <div className="space-y-1 pt-4 border-t">
+                  <p className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    System
+                  </p>
+                  <TabsTrigger
+                    value="settings"
+                    className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-all hover:bg-accent/50 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="font-medium">Settings</span>
+                  </TabsTrigger>
+                </div>
+              </TabsList>
+            </div>
+
+            {/* Navigation Footer */}
+            <div className="p-4 border-t bg-card/80">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors cursor-pointer">
+                <div className="p-2 bg-primary/10 rounded-full">
+                  <Bell className="h-4 w-4 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Notifications</p>
+                  <p className="text-xs text-muted-foreground">5 new alerts</p>
+                </div>
+                <Badge variant="destructive" className="text-xs">5</Badge>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1">
-          <div className="container mx-auto px-6 py-6">
+        <div className="flex-1 overflow-auto">
+          <div className="p-6 space-y-6">
             {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Permits</CardTitle>
@@ -233,237 +329,290 @@ export default function ImmigrationDashboard() {
               </Card>
             </div>
 
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Quick Actions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                  <CardDescription>
-                    Common immigration tasks and operations
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Link to="/immigration/permits">
-                    <Button className="w-full justify-start" variant="outline">
-                      <FileCheck className="mr-2 h-4 w-4" />
-                      Manage Permits
-                    </Button>
-                  </Link>
-                  <Link to="/immigration/visas">
-                    <Button className="w-full justify-start" variant="outline">
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Visa Management
-                    </Button>
-                  </Link>
-                  <Link to="/immigration/residents">
-                    <Button className="w-full justify-start" variant="outline">
-                      <Users className="mr-2 h-4 w-4" />
-                      Resident Registry
-                    </Button>
-                  </Link>
-                  <Link to="/verification">
-                    <Button className="w-full justify-start" variant="outline">
-                      <Search className="mr-2 h-4 w-4" />
-                      Identity Verification
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
+            <TabsContent value="overview" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column - Quick Actions & Status */}
+                <div className="space-y-6 lg:col-span-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Quick Actions</CardTitle>
+                      <CardDescription>
+                        Common immigration tasks and operations
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <Link to="/immigration/permits">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <FileCheck className="h-6 w-6 text-primary" />
+                          <span>Manage Permits</span>
+                        </Button>
+                      </Link>
+                      <Link to="/immigration/visas">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <Globe className="h-6 w-6 text-primary" />
+                          <span>Visa Management</span>
+                        </Button>
+                      </Link>
+                      <Link to="/immigration/residency">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <Users className="h-6 w-6 text-primary" />
+                          <span>Resident Registry</span>
+                        </Button>
+                      </Link>
+                      <Link to="/verification">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <Search className="h-6 w-6 text-primary" />
+                          <span>Verify ID</span>
+                        </Button>
+                      </Link>
+                      <Link to="/dashboard/police/scan-qr">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <Search className="h-6 w-6 text-primary" />
+                          <span>Scan QR</span>
+                        </Button>
+                      </Link>
+                      <Link to="/dashboard/police/face-scanner">
+                        <Button className="w-full h-24 flex flex-col gap-2" variant="outline">
+                          <Camera className="h-6 w-6 text-primary" />
+                          <span>Face Scan</span>
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
 
-              {/* Permit Status Distribution */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Permit Status Distribution</CardTitle>
-                  <CardDescription>
-                    Breakdown of permits by current status
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Active Permits</span>
-                      <span>{stats?.activePermits || 0}</span>
-                    </div>
-                    <Progress 
-                      value={stats?.totalPermits ? (stats.activePermits / stats.totalPermits) * 100 : 0} 
-                      className="h-2" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Expired Permits</span>
-                      <span>{stats?.expiredPermits || 0}</span>
-                    </div>
-                    <Progress 
-                      value={stats?.totalPermits ? (stats.expiredPermits / stats.totalPermits) * 100 : 0} 
-                      className="h-2" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Pending Applications</span>
-                      <span>{stats?.pendingApplications || 0}</span>
-                    </div>
-                    <Progress 
-                      value={stats?.totalPermits ? (stats.pendingApplications / stats.totalPermits) * 100 : 0} 
-                      className="h-2" 
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="permits" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Permits</CardTitle>
-                <CardDescription>
-                  Latest permit applications and renewals
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentPermits.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No recent permits found
-                    </p>
-                  ) : (
-                    recentPermits.map((permit) => (
-                      <div key={permit.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{permit.permitNumber}</span>
-                            <Badge variant={getPermitTypeColor(permit.type)}>
-                              {permit.type}
-                            </Badge>
-                            <Badge variant={getStatusColor(permit.status)}>
-                              {permit.status}
-                            </Badge>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recent Alerts</CardTitle>
+                      <CardDescription>Latest system notifications and alerts</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
+                          <div className="p-2 bg-yellow-500/10 rounded-full">
+                            <Bell className="h-4 w-4 text-yellow-500" />
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {permit.holderName} - {permit.nationality}
-                          </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Expires: {new Date(permit.expiryDate).toLocaleDateString()}
-                            </span>
+                          <div>
+                            <h4 className="text-sm font-semibold">Visa Expiry Warning</h4>
+                            <p className="text-xs text-muted-foreground">Visa #V-2024-{100 + i} is expiring in 3 days.</p>
+                            <span className="text-[10px] text-muted-foreground mt-1 block">2 hours ago</span>
                           </div>
                         </div>
-                        <Link to={`/immigration/permits/${permit.id}`}>
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
-                        </Link>
-                      </div>
-                    ))
-                  )}
+                      ))}
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="visas" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Visas</CardTitle>
-                <CardDescription>
-                  Latest visa applications and approvals
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentVisas.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      No recent visas found
-                    </p>
-                  ) : (
-                    recentVisas.map((visa) => (
-                      <div key={visa.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{visa.visaNumber}</span>
-                            <Badge variant={getPermitTypeColor(visa.type)}>
-                              {visa.type}
-                            </Badge>
-                            <Badge variant={getStatusColor(visa.status)}>
-                              {visa.status}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {visa.holderName} - {visa.nationality}
-                          </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Valid until: {new Date(visa.expiryDate).toLocaleDateString()}
-                            </span>
-                          </div>
+                {/* Right Column - Stats & Distribution */}
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Permit Status</CardTitle>
+                      <CardDescription>
+                        Breakdown of permits by status
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Active Permits</span>
+                          <span>{stats?.activePermits || 0}</span>
                         </div>
-                        <Link to={`/immigration/visas/${visa.id}`}>
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
-                        </Link>
+                        <Progress
+                          value={stats?.totalPermits ? (stats.activePermits / stats.totalPermits) * 100 : 0}
+                          className="h-2"
+                        />
                       </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Expired Permits</span>
+                          <span>{stats?.expiredPermits || 0}</span>
+                        </div>
+                        <Progress
+                          value={stats?.totalPermits ? (stats.expiredPermits / stats.totalPermits) * 100 : 0}
+                          className="h-2"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Pending Applications</span>
+                          <span>{stats?.pendingApplications || 0}</span>
+                        </div>
+                        <Progress
+                          value={stats?.totalPermits ? (stats.pendingApplications / stats.totalPermits) * 100 : 0}
+                          className="h-2"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
 
-          <TabsContent value="analytics" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Processing Metrics</CardTitle>
+                      <CardDescription>
+                        Key performance indicators
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex justify-between">
+                        <span className="text-sm">Pending Applications</span>
+                        <span className="font-medium">{stats?.pendingApplications || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Active Visas</span>
+                        <span className="font-medium">{stats?.activeVisas || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Total Residents</span>
+                        <span className="font-medium">{stats?.totalResidents || 0}</span>
+                      </div>
+                      <div className="pt-4 border-t">
+                        <Button className="w-full" variant="secondary">View Full Report</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="permits" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Permit Approval Rate</CardTitle>
+                  <CardTitle>Recent Permits</CardTitle>
                   <CardDescription>
-                    Percentage of applications approved
+                    Latest permit applications and renewals
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center space-y-2">
-                    <div className="text-3xl font-bold text-primary">
-                      {stats?.totalPermits ? Math.round((stats.activePermits / stats.totalPermits) * 100) : 0}%
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {stats?.activePermits || 0} of {stats?.totalPermits || 0} permits approved
-                    </p>
+                  <div className="space-y-4">
+                    {recentPermits.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No recent permits found
+                      </p>
+                    ) : (
+                      recentPermits.map((permit) => (
+                        <div key={permit.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{permit.permitNumber}</span>
+                              <Badge variant={getPermitTypeColor(permit.type)}>
+                                {permit.type}
+                              </Badge>
+                              <Badge variant={getStatusColor(permit.status)}>
+                                {permit.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Resident ID: {permit.residentId}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Expires: {new Date(permit.validUntil).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <Link to={`/immigration/permits/${permit.id}`}>
+                            <Button variant="outline" size="sm">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
 
+            <TabsContent value="visas" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Processing Metrics</CardTitle>
+                  <CardTitle>Recent Visas</CardTitle>
                   <CardDescription>
-                    Key performance indicators
+                    Latest visa applications and approvals
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-sm">Pending Applications</span>
-                    <span className="font-medium">{stats?.pendingApplications || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Active Permits</span>
-                    <span className="font-medium">{stats?.activePermits || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Active Visas</span>
-                    <span className="font-medium">{stats?.activeVisas || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Total Residents</span>
-                    <span className="font-medium">{stats?.totalResidents || 0}</span>
+                <CardContent>
+                  <div className="space-y-4">
+                    {recentVisas.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No recent visas found
+                      </p>
+                    ) : (
+                      recentVisas.map((visa) => (
+                        <div key={visa.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{visa.visaNumber}</span>
+                              <Badge variant={getPermitTypeColor(visa.type)}>
+                                {visa.type}
+                              </Badge>
+                              <Badge variant={getStatusColor(visa.status)}>
+                                {visa.status}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Resident ID: {visa.residentId}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                Valid until: {new Date((visa as any).expiryDate || (visa as any).validUntil).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          <Link to={`/immigration/visas/${visa.id}`}>
+                            <Button variant="outline" size="sm">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          </TabsContent>
+            </TabsContent>
+
+            <TabsContent value="passports">
+              <div className="flex flex-col items-center justify-center h-[400px] space-y-4">
+                <CreditCard className="h-16 w-16 text-muted-foreground/50" />
+                <h3 className="text-xl font-semibold">Passport Services</h3>
+                <p className="text-muted-foreground">Manage passport applications and renewals.</p>
+                <Link to="/immigration/passports">
+                  <Button>Go to Passport Services</Button>
+                </Link>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="residency">
+              <div className="flex flex-col items-center justify-center h-[400px] space-y-4">
+                <Users className="h-16 w-16 text-muted-foreground/50" />
+                <h3 className="text-xl font-semibold">Residency Management</h3>
+                <p className="text-muted-foreground">Manage resident permits and status.</p>
+                <Link to="/immigration/residency">
+                  <Button>Go to Residency Management</Button>
+                </Link>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="analytics">
+              <div className="flex flex-col items-center justify-center h-[400px] space-y-4">
+                <FileBarChart className="h-16 w-16 text-muted-foreground/50" />
+                <h3 className="text-xl font-semibold">Analytics Center</h3>
+                <p className="text-muted-foreground">View detailed immigration statistics and reports.</p>
+                <Button variant="outline">View Analytics</Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="settings">
+              <div className="flex flex-col items-center justify-center h-[400px] space-y-4">
+                <Settings className="h-16 w-16 text-muted-foreground/50" />
+                <h3 className="text-xl font-semibold">Settings</h3>
+                <p className="text-muted-foreground">Configure dashboard preferences.</p>
+                <Button variant="outline">Open Settings</Button>
+              </div>
+            </TabsContent>
           </div>
         </div>
       </Tabs>

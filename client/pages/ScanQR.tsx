@@ -17,7 +17,7 @@ export default function IDScanner() {
   const [nationalId, setNationalId] = useState("");
   const [passportNumber, setPassportNumber] = useState("");
   const [foundResident, setFoundResident] = useState<Resident | null>(null);
-  
+
   // QR scanning states
   const [isQRCameraActive, setIsQRCameraActive] = useState(false);
   const [qrScanning, setQrScanning] = useState(false);
@@ -26,7 +26,7 @@ export default function IDScanner() {
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const qrStreamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Face scanning states (keeping for compatibility)
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [faceScanning, setFaceScanning] = useState(false);
@@ -40,16 +40,16 @@ export default function IDScanner() {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
+
     oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
     oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1);
-    
+
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    
+
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.3);
   };
@@ -64,9 +64,9 @@ export default function IDScanner() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' } // Use back camera if available
       });
-      
+
       qrStreamRef.current = stream;
-      
+
       if (qrVideoRef.current) {
         qrVideoRef.current.srcObject = stream;
         await qrVideoRef.current.play();
@@ -75,7 +75,7 @@ export default function IDScanner() {
       }
     } catch (err: any) {
       let errorMessage = 'Failed to access camera';
-      
+
       if (err.name === 'NotAllowedError') {
         errorMessage = 'Camera permission denied. Please allow camera access and try again.';
       } else if (err.name === 'NotFoundError') {
@@ -83,7 +83,7 @@ export default function IDScanner() {
       } else if (err.name === 'NotSupportedError') {
         errorMessage = 'Camera is not supported in this browser.';
       }
-      
+
       setError(errorMessage);
       toast({
         title: "Camera Error",
@@ -98,12 +98,12 @@ export default function IDScanner() {
       qrStreamRef.current.getTracks().forEach(track => track.stop());
       qrStreamRef.current = null;
     }
-    
+
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
-    
+
     setIsQRCameraActive(false);
     setQrScanning(false);
     setScannedQRData(null);
@@ -111,17 +111,17 @@ export default function IDScanner() {
 
   const startQRScanning = () => {
     setQrScanning(true);
-    
+
     // Simple QR scanning simulation - in a real app, you'd use a QR code library
     scanIntervalRef.current = setInterval(() => {
       if (qrVideoRef.current && qrCanvasRef.current) {
         // Simulate QR code detection
-         const simulatedQRCodes = [
-           'ID:123456/78/9',
-           'PASSPORT:ZN1234567',
-           'RESIDENT:654321/89/0'
-         ];
-        
+        const simulatedQRCodes = [
+          'ID:123456/78/9',
+          'PASSPORT:ZN1234567',
+          'RESIDENT:654321/89/0'
+        ];
+
         // Random chance of "detecting" a QR code
         if (Math.random() < 0.1) { // 10% chance per scan
           const randomQR = simulatedQRCodes[Math.floor(Math.random() * simulatedQRCodes.length)];
@@ -134,17 +134,17 @@ export default function IDScanner() {
   const handleQRDetected = async (qrData: string) => {
     setScannedQRData(qrData);
     setQrScanning(false);
-    
+
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
     }
-    
+
     playSuccessSound();
-    
+
     // Parse QR data and search for resident
     const [type, value] = qrData.split(':');
-    
+
     if (type === 'ID' && value) {
       setNationalId(value);
       await handleSearch('nationalId', value);
@@ -162,7 +162,7 @@ export default function IDScanner() {
 
   const handleSearch = async (searchType: 'nationalId' | 'passport', qrValue?: string) => {
     const searchValue = qrValue || (searchType === 'nationalId' ? nationalId : passportNumber);
-    
+
     if (!searchValue.trim()) {
       setError(`Please enter a ${searchType === 'nationalId' ? 'National ID' : 'Passport Number'}`);
       return;
@@ -172,13 +172,13 @@ export default function IDScanner() {
       setLoading(true);
       setError(null);
       setFoundResident(null);
-      
-      const searchParams = searchType === 'nationalId' 
+
+      const searchParams = searchType === 'nationalId'
         ? { nationalId: searchValue }
         : { passportNumber: searchValue };
-      
+
       const res = await Api.searchResident(searchParams);
-      
+
       if (res.resident) {
         // Play success sound
         try {
@@ -186,9 +186,9 @@ export default function IDScanner() {
         } catch (soundError) {
           console.log('Could not play sound:', soundError);
         }
-        
+
         setFoundResident(res.resident);
-        
+
         // Show success toast
         toast({
           title: "Resident Found!",
@@ -262,7 +262,7 @@ export default function IDScanner() {
                 QR Code
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="nationalId" className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="nationalId">National ID Number</Label>
@@ -275,8 +275,8 @@ export default function IDScanner() {
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch('nationalId')}
                     disabled={loading}
                   />
-                  <Button 
-                    onClick={() => handleSearch('nationalId')} 
+                  <Button
+                    onClick={() => handleSearch('nationalId')}
                     disabled={loading || !nationalId.trim()}
                     className="min-w-[100px]"
                   >
@@ -285,7 +285,7 @@ export default function IDScanner() {
                 </div>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="passport" className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="passportNumber">Passport Number</Label>
@@ -298,8 +298,8 @@ export default function IDScanner() {
                     onKeyPress={(e) => e.key === 'Enter' && handleSearch('passport')}
                     disabled={loading}
                   />
-                  <Button 
-                    onClick={() => handleSearch('passport')} 
+                  <Button
+                    onClick={() => handleSearch('passport')}
                     disabled={loading || !passportNumber.trim()}
                     className="min-w-[100px]"
                   >
@@ -308,7 +308,7 @@ export default function IDScanner() {
                 </div>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="qrcode" className="space-y-4">
               <div className="space-y-4">
                 <div className="text-center">
@@ -317,7 +317,7 @@ export default function IDScanner() {
                     Point your camera at a QR code containing ID or passport information
                   </p>
                 </div>
-                
+
                 {!isQRCameraActive ? (
                   <div className="flex flex-col items-center space-y-4">
                     <div className="w-full max-w-md aspect-square bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
@@ -357,10 +357,10 @@ export default function IDScanner() {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="flex gap-2 justify-center">
-                      <Button 
-                        onClick={stopQRCamera} 
+                      <Button
+                        onClick={stopQRCamera}
                         variant="outline"
                         className="flex items-center gap-2"
                       >
@@ -368,7 +368,7 @@ export default function IDScanner() {
                         Stop Scanner
                       </Button>
                       {scannedQRData && (
-                        <Button 
+                        <Button
                           onClick={() => {
                             setScannedQRData(null);
                             startQRScanning();
@@ -382,18 +382,18 @@ export default function IDScanner() {
                     </div>
                   </div>
                 )}
-                
+
                 <canvas ref={qrCanvasRef} className="hidden" />
               </div>
             </TabsContent>
           </Tabs>
-          
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
               <div className="text-sm text-red-600">{error}</div>
             </div>
           )}
-          
+
           {foundResident && (
             <Card className="bg-green-50 border-green-200">
               <CardHeader>
@@ -449,17 +449,17 @@ export default function IDScanner() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex gap-2 pt-3">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={clearSearch}
                     className="flex-1"
                   >
                     Search Another
                   </Button>
-                  <Button 
-                    onClick={() => navigate('/police/cases/new', { state: { resident: foundResident } })}
+                  <Button
+                    onClick={() => navigate('/dashboard/police/cases/new', { state: { resident: foundResident } })}
                     className="flex-1"
                   >
                     Create Case

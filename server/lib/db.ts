@@ -1,40 +1,51 @@
-import mysql from 'mysql2/promise';
+import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 
-// Database connection pool
-const pool = mysql.createPool({
+// Create PostgreSQL connection pool
+const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '3306'),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'flova_db',
-  connectionLimit: 20, // Maximum number of connections in the pool
+  port: parseInt(process.env.DB_PORT || '5432'),
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'password',
+  database: process.env.DB_NAME || 'ipims_db',
+  max: 20, // Maximum number of connections in the pool
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+// Test connection
+pool.on('connect', () => {
+  console.log('✓ Connected to PostgreSQL database');
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected database error:', err);
 });
 
 // Helper function to execute queries
 export async function query(text: string, params?: any[]): Promise<any> {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    const [rows] = await connection.execute(text, params);
-    return { rows };
+    const result = await client.query(text, params);
+    return { rows: result.rows };
   } finally {
-    connection.release();
+    client.release();
   }
 }
 
 // Helper function to execute transactions
-export async function transaction<T>(callback: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
-  const connection = await pool.getConnection();
+export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
   try {
-    await connection.beginTransaction();
-    const result = await callback(connection);
-    await connection.commit();
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
     return result;
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     throw error;
   } finally {
-    connection.release();
+    client.release();
   }
 }
 
@@ -48,18 +59,18 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-// NRC hashing utilities for patient lookup
+// NRC hashing utilities for resident lookup
 // Use a deterministic approach for consistent lookups
 export function hashNrc(nrc: string): string {
   // Use a fixed salt for NRC hashing to ensure consistent lookups
-  const fixedSalt = process.env.NRC_SALT || 'flova_nrc_salt_2024';
+  const fixedSalt = process.env.NRC_SALT || 'ipims_nrc_salt_2024';
   return bcrypt.hashSync(nrc + fixedSalt, 10);
 }
 
 // National ID hashing utilities for resident lookup
 export function hashNationalId(nationalId: string): string {
   // Use a fixed salt for National ID hashing to ensure consistent lookups
-  const fixedSalt = process.env.NRC_SALT || 'flova_nrc_salt_2024';
+  const fixedSalt = process.env.NRC_SALT || 'ipims_nrc_salt_2024';
   return bcrypt.hashSync(nationalId + fixedSalt, 10);
 }
 

@@ -2,10 +2,9 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
-import { handleLogin, handlePatientLogin, handlePatientAlternativeLogin, handleRegisterStaff } from "./routes/auth";
+import { handleRegisterResident, handleResidentLogin, handleOfficerLogin } from "./routes/auth";
 import {
   handleSearchResident,
-  handleRegisterResident,
   handleUpsertResident,
   handleListResidents,
 } from "./routes/residents";
@@ -28,10 +27,10 @@ import {
   handleListVisas,
   handleCheckPermitValidity,
 } from "./routes/permits";
-import { 
-  handleCreateWebsite, 
-  handleGetWebsite, 
-  handleUpdateWebsite, 
+import {
+  handleCreateWebsite,
+  handleGetWebsite,
+  handleUpdateWebsite,
   handlePublishWebsite,
   handleListThemes,
   handleListPages,
@@ -56,10 +55,9 @@ export function createServer() {
   app.get("/api/demo", handleDemo);
 
   // Authentication routes
-  app.post("/api/auth/login", handleLogin);
-  app.post("/api/auth/patient-login", handlePatientLogin);
-  app.post("/api/auth/patient-alternative-login", handlePatientAlternativeLogin);
-  app.post("/api/auth/register-staff", handleRegisterStaff);
+  app.post("/api/auth/register", handleRegisterResident); // Citizen registration
+  app.post("/api/auth/login", handleResidentLogin); // Citizen login
+  app.post("/api/auth/officer-login", handleOfficerLogin); // Officer/Admin login
 
   // Resident routes
   app.post("/api/residents/search", handleSearchResident);
@@ -93,10 +91,10 @@ export function createServer() {
   app.get("/api/websites", handleGetWebsite);
   app.put("/api/websites", handleUpdateWebsite);
   app.post("/api/websites/publish", handlePublishWebsite);
-  
+
   // Theme routes
   app.get("/api/themes", handleListThemes);
-  
+
   // Page routes
   app.get("/api/pages", handleListPages);
   app.get("/api/pages/:pageId", handleGetPage);

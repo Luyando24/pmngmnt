@@ -1,206 +1,260 @@
--- PostgreSQL schema for EHR SaaS (Zambia)
+-- PostgreSQL schema for Integrated Police & Immigration Management System (IPIMS)
 -- Requires: pgcrypto for encryption utilities
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS citext;
 
--- Hospitals / Clinics
-CREATE TABLE IF NOT EXISTS hospitals (
-  id UUID PRIMARY KEY,
-  name TEXT NOT NULL,
-  code TEXT NOT NULL UNIQUE,
-  address TEXT,
-  district TEXT,
-  province TEXT,
-  phone TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Staff Users (RBAC)
-CREATE TYPE user_role AS ENUM ('admin', 'doctor', 'nurse', 'lab_technician');
-CREATE TABLE IF NOT EXISTS staff_users (
-  id UUID PRIMARY KEY,
-  hospital_id UUID REFERENCES hospitals(id) ON DELETE SET NULL,
-  email CITEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  role user_role NOT NULL,
+-- ============================================
+-- RESIDENTS / CITIZENS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS residents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Identity Documents
+  nrc TEXT UNIQUE, -- National Registration Card (for Zambian citizens)
+  passport_number TEXT, -- Passport number
+  national_id_hash TEXT UNIQUE, -- Hashed NRC for secure lookups
+  
+  -- Personal Information
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
+  gender TEXT CHECK (gender IN ('male', 'female')),
+  date_of_birth DATE NOT NULL,
+  
+  -- Nationality & Residency
+  nationality TEXT NOT NULL DEFAULT 'Zambia',
+  residency_status TEXT DEFAULT 'citizen' CHECK (residency_status IN ('citizen', 'resident', 'visitor', 'refugee')),
+  
+  -- Contact Information
   phone TEXT,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Patients: PII columns stored encrypted-at-rest (ciphertext)
-CREATE TABLE IF NOT EXISTS patients (
-  id UUID PRIMARY KEY,
-  -- Hospital ID card (6 unique characters) for secure authentication
-  hospital_card_id TEXT NOT NULL UNIQUE CHECK (LENGTH(hospital_card_id) = 6),
+  email CITEXT,
+  address TEXT,
   
-  -- NRC stored as salted hash for lookups without exposing raw NRC
-  nrc_hash TEXT NOT NULL UNIQUE,
-  nrc_salt TEXT NOT NULL,
-
-  -- Additional authentication methods (optional, set after initial registration)
-  email_cipher BYTEA,
-  phone_auth_cipher BYTEA, -- phone number for authentication
-  password_hash TEXT, -- optional password for login
-  
-  -- Encrypted columns (application encrypt/decrypt)
-  first_name_cipher BYTEA,
-  last_name_cipher BYTEA,
-  gender TEXT,
-  dob_cipher BYTEA,
-  phone_cipher BYTEA,
-  address_cipher BYTEA,
-  emergency_contact_name_cipher BYTEA,
-  emergency_contact_phone_cipher BYTEA,
-  
-  -- Additional patient details
-  occupation_cipher BYTEA,
+  -- Additional Details
+  occupation TEXT,
   marital_status TEXT CHECK (marital_status IN ('single', 'married', 'divorced', 'widowed')),
-  blood_type TEXT CHECK (blood_type IN ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
-  allergies_cipher BYTEA,
-  medical_history_cipher BYTEA,
-  family_history_cipher BYTEA,
-  insurance_info_cipher BYTEA,
-
-  -- Digital card
-  card_id TEXT NOT NULL UNIQUE,
-  card_qr_signature TEXT NOT NULL,
-
+  emergency_contact_name TEXT,
+  emergency_contact_phone TEXT,
+  
+  -- Digital Identity (for QR verification)
+  card_id TEXT UNIQUE,
+  qr_code_signature TEXT,
+  
+  -- Password for login (optional, for citizen portal)
+  password_hash TEXT,
+  
+  -- Metadata
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_patients_card_id ON patients(card_id);
 
--- Appointments
-CREATE TABLE IF NOT EXISTS appointments (
-  id UUID PRIMARY KEY,
-  patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-  hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
-  scheduled_for TIMESTAMPTZ NOT NULL,
-  reason TEXT,
-  status TEXT NOT NULL CHECK (status IN ('scheduled','completed','cancelled','no_show')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_residents_nrc ON residents(nrc);
+CREATE INDEX IF NOT EXISTS idx_residents_passport ON residents(passport_number);
+CREATE INDEX IF NOT EXISTS idx_residents_email ON residents(email);
+CREATE INDEX IF NOT EXISTS idx_residents_national_id_hash ON residents(national_id_hash);
 
--- Lab Tests / Results (JSONB for flexible result formats)
-CREATE TABLE IF NOT EXISTS lab_tests (
-  id UUID PRIMARY KEY,
-  patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-  hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
-  ordered_by_id UUID REFERENCES staff_users(id) ON DELETE SET NULL,
-  type TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('ordered','in_progress','completed','cancelled')),
-  result JSONB,
-  result_summary TEXT,
-  collected_at TIMESTAMPTZ,
-  resulted_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_lab_tests_patient ON lab_tests(patient_id, updated_at DESC);
+-- ============================================
+-- POLICE OFFICERS TABLE
+-- ============================================
+CREATE TYPE officer_rank AS ENUM ('constable', 'sergeant', 'inspector', 'superintendent', 'commissioner');
 
--- Offline sync queue (server side ingestion auditing)
-CREATE TABLE IF NOT EXISTS sync_ingest (
-  id UUID PRIMARY KEY,
-  source_hospital_id UUID REFERENCES hospitals(id) ON DELETE SET NULL,
-  source_device_id TEXT,
-  op_type TEXT NOT NULL CHECK (op_type IN ('create','update','delete')),
-  entity TEXT NOT NULL,
-  entity_id TEXT,
-  payload JSONB NOT NULL,
-  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  processed_at TIMESTAMPTZ,
-  error TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_sync_ingest_processed ON sync_ingest(processed_at);
-
--- Hospital Website Builder Tables
-
--- Website configurations for each hospital
-CREATE TABLE IF NOT EXISTS hospital_websites (
-  id UUID PRIMARY KEY,
-  hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
-  domain_name TEXT UNIQUE, -- custom domain or subdomain
-  subdomain TEXT NOT NULL UNIQUE, -- flova subdomain like "hospital-name.flova.com"
-  title TEXT NOT NULL,
-  description TEXT,
-  logo_url TEXT,
-  favicon_url TEXT,
-  theme_id UUID, -- references website_themes
-  is_published BOOLEAN NOT NULL DEFAULT FALSE,
-  custom_css TEXT,
-  analytics_code TEXT, -- Google Analytics, etc.
-  contact_email TEXT,
-  contact_phone TEXT,
-  social_links JSONB, -- {"facebook": "url", "twitter": "url", etc.}
-  seo_settings JSONB, -- meta tags, keywords, etc.
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_hospital_websites_hospital ON hospital_websites(hospital_id);
-CREATE INDEX IF NOT EXISTS idx_hospital_websites_subdomain ON hospital_websites(subdomain);
-
--- Pre-built themes for hospital websites
-CREATE TABLE IF NOT EXISTS website_themes (
-  id UUID PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT,
-  preview_image_url TEXT,
-  css_template TEXT NOT NULL,
-  layout_config JSONB NOT NULL, -- defines available sections and components
-  color_scheme JSONB, -- primary, secondary, accent colors
-  font_settings JSONB, -- font families, sizes
+CREATE TABLE IF NOT EXISTS officers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  officer_id TEXT NOT NULL UNIQUE, -- Badge number
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  rank officer_rank NOT NULL,
+  department TEXT,
+  station TEXT,
+  email CITEXT UNIQUE,
+  phone TEXT,
+  password_hash TEXT NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Website pages (home, about, services, contact, etc.)
-CREATE TABLE IF NOT EXISTS website_pages (
-  id UUID PRIMARY KEY,
-  website_id UUID NOT NULL REFERENCES hospital_websites(id) ON DELETE CASCADE,
-  slug TEXT NOT NULL, -- URL slug like "about", "services"
-  title TEXT NOT NULL,
-  meta_description TEXT,
-  content JSONB NOT NULL, -- page content in structured format
-  is_published BOOLEAN NOT NULL DEFAULT TRUE,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(website_id, slug)
-);
-CREATE INDEX IF NOT EXISTS idx_website_pages_website ON website_pages(website_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_officers_officer_id ON officers(officer_id);
+CREATE INDEX IF NOT EXISTS idx_officers_email ON officers(email);
 
--- Website components/sections (hero, services, testimonials, etc.)
-CREATE TABLE IF NOT EXISTS website_components (
-  id UUID PRIMARY KEY,
-  page_id UUID NOT NULL REFERENCES website_pages(id) ON DELETE CASCADE,
-  component_type TEXT NOT NULL, -- "hero", "services", "testimonials", "contact_form"
-  component_data JSONB NOT NULL, -- component-specific data
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+-- ============================================
+-- IMMIGRATION OFFICERS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS immigration_officers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  officer_id TEXT NOT NULL UNIQUE,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  office_location TEXT,
+  email CITEXT UNIQUE,
+  phone TEXT,
+  password_hash TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_website_components_page ON website_components(page_id, sort_order);
 
--- Website media/assets
-CREATE TABLE IF NOT EXISTS website_media (
-  id UUID PRIMARY KEY,
-  website_id UUID NOT NULL REFERENCES hospital_websites(id) ON DELETE CASCADE,
-  filename TEXT NOT NULL,
-  original_filename TEXT NOT NULL,
-  file_path TEXT NOT NULL,
-  file_size INTEGER NOT NULL,
-  mime_type TEXT NOT NULL,
-  alt_text TEXT,
+CREATE INDEX IF NOT EXISTS idx_immigration_officers_email ON immigration_officers(email);
+
+-- ============================================
+-- POLICE CASES TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS cases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_number TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  description TEXT,
+  type TEXT NOT NULL, -- 'theft', 'assault', 'fraud', etc.
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'investigating', 'closed', 'archived')),
+  priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+  location TEXT,
+  reported_by UUID REFERENCES residents(id) ON DELETE SET NULL,
+  assigned_to UUID REFERENCES officers(id) ON DELETE SET NULL,
+  reported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_assigned_to ON cases(assigned_to);
+
+-- ============================================
+-- SUSPECTS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS suspects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  resident_id UUID REFERENCES residents(id) ON DELETE SET NULL,
+  case_id UUID REFERENCES cases(id) ON DELETE CASCADE,
+  alias TEXT,
+  description TEXT,
+  last_known_location TEXT,
+  status TEXT DEFAULT 'wanted' CHECK (status IN ('wanted', 'in_custody', 'released', 'convicted')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_suspects_case_id ON suspects(case_id);
+CREATE INDEX IF NOT EXISTS idx_suspects_resident_id ON suspects(resident_id);
+
+-- ============================================
+-- IMMIGRATION PERMITS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS permits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  permit_number TEXT NOT NULL UNIQUE,
+  resident_id UUID REFERENCES residents(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('work', 'student', 'business', 'residence', 'temporary')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
+  issued_by UUID REFERENCES immigration_officers(id) ON DELETE SET NULL,
+  issue_date DATE,
+  expiry_date DATE,
+  purpose TEXT,
+  employer_details JSONB, -- For work permits
+  institution_details JSONB, -- For student permits
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_permits_resident_id ON permits(resident_id);
+CREATE INDEX IF NOT EXISTS idx_permits_status ON permits(status);
+CREATE INDEX IF NOT EXISTS idx_permits_expiry_date ON permits(expiry_date);
+
+-- ============================================
+-- VISAS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS visas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  visa_number TEXT NOT NULL UNIQUE,
+  resident_id UUID REFERENCES residents(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('tourist', 'business', 'transit', 'diplomatic')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
+  issued_by UUID REFERENCES immigration_officers(id) ON DELETE SET NULL,
+  issue_date DATE,
+  expiry_date DATE,
+  entry_date DATE,
+  exit_date DATE,
+  purpose TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_visas_resident_id ON visas(resident_id);
+CREATE INDEX IF NOT EXISTS idx_visas_status ON visas(status);
+
+-- ============================================
+-- FINGERPRINT APPLICATIONS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS fingerprint_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  resident_id UUID REFERENCES residents(id) ON DELETE CASCADE,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  nrc TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  reason TEXT NOT NULL CHECK (reason IN ('police_clearance', 'visa', 'employment', 'other')),
+  preferred_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'scheduled', 'completed', 'cancelled')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fingerprint_applications_resident_id ON fingerprint_applications(resident_id);
+CREATE INDEX IF NOT EXISTS idx_fingerprint_applications_status ON fingerprint_applications(status);
+
+-- ============================================
+-- ADMIN USERS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS admin_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email CITEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('super_admin', 'admin', 'moderator')),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
+
+-- ============================================
+-- AUDIT LOG TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID, -- Can reference officers, immigration_officers, or admin_users
+  user_type TEXT, -- 'officer', 'immigration_officer', 'admin', 'resident'
+  action TEXT NOT NULL,
+  entity_type TEXT, -- 'case', 'permit', 'visa', etc.
+  entity_id UUID,
+  changes JSONB,
+  ip_address TEXT,
+  user_agent TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_website_media_website ON website_media(website_id);
 
--- Helper function concept (Laravel should implement application-level encryption using key rotation).
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+
+-- ============================================
+-- FUNCTIONS FOR AUTOMATIC TIMESTAMP UPDATES
+-- ============================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   NEW.updated_at = now();
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Add triggers for all tables with updated_at
+CREATE TRIGGER update_residents_updated_at BEFORE UPDATE ON residents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_officers_updated_at BEFORE UPDATE ON officers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_immigration_officers_updated_at BEFORE UPDATE ON immigration_officers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_cases_updated_at BEFORE UPDATE ON cases FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_suspects_updated_at BEFORE UPDATE ON suspects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_permits_updated_at BEFORE UPDATE ON permits FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_visas_updated_at BEFORE UPDATE ON visas FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_fingerprint_applications_updated_at BEFORE UPDATE ON fingerprint_applications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_admin_users_updated_at BEFORE UPDATE ON admin_users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

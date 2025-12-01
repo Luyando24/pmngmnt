@@ -73,22 +73,22 @@ export interface Resident {
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
-  
+
   // Additional authentication methods (optional)
   email?: string;
   phoneAuth?: string; // phone number for authentication
   hasPassword?: boolean; // indicates if password is set
-  
+
   // Resident details
   occupation?: string;
   maritalStatus?: "single" | "married" | "divorced" | "widowed";
   nationality: string;
   residencyStatus: "citizen" | "permanent_resident" | "temporary_resident" | "visitor";
-  
+
   // Biometric data
   fingerprintHash?: string;
   faceRecognitionHash?: string;
-  
+
   cardId: string; // digital identity card ID (unique, non-PII)
   cardQrData: string; // signed QR payload (opaque to clients)
   createdAt: string;
@@ -210,20 +210,22 @@ export interface ResidentAlternativeLoginRequest {
 }
 
 export interface ResidentRegistrationRequest {
-  nrc: NRC;
+  nrc?: NRC; // Optional for foreign nationals
   passportNumber?: PassportNumber;
   firstName: string;
   lastName: string;
   gender?: "male" | "female" | "other";
-  dob?: string;
+  dob: string; // Required for registration
   phone?: string;
+  email?: string; // For login
+  password?: string; // For login  
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   occupation?: string;
   maritalStatus?: "single" | "married" | "divorced" | "widowed";
   nationality: string;
-  residencyStatus: "citizen" | "permanent_resident" | "temporary_resident" | "visitor";
+  residencyStatus?: "citizen" | "permanent_resident" | "temporary_resident" | "visitor" | "refugee";
 }
 
 // Website Builder Types
@@ -411,7 +413,7 @@ export interface CreateCaseResponse {
   case: Case;
 }
 
-export interface ListCasesResponse extends Paged<Case> {}
+export interface ListCasesResponse extends Paged<Case> { }
 
 export interface CreatePermitRequest {
   residentId: UUID;
@@ -426,7 +428,7 @@ export interface CreatePermitResponse {
   permit: Permit;
 }
 
-export interface ListPermitsResponse extends Paged<Permit> {}
+export interface ListPermitsResponse extends Paged<Permit> { }
 
 export interface RegisterOfficerRequest {
   stationName?: string; // for police officers
@@ -449,3 +451,64 @@ export interface RegisterOfficerResponse {
 export interface DemoResponse {
   message: string;
 }
+
+export interface DashboardStats {
+  totalCases: number;
+  openCases: number;
+  inProgressCases: number;
+  closedCases: number;
+  highPriorityCases: number;
+  mediumPriorityCases: number;
+  lowPriorityCases: number;
+}
+
+export interface FingerprintApplication {
+  id: UUID;
+  applicantId?: UUID; // if logged in
+  firstName: string;
+  lastName: string;
+  nrc: string;
+  phone: string;
+  reason: "police_clearance" | "visa" | "employment" | "other";
+  preferredDate: string;
+  status: "pending" | "scheduled" | "completed" | "rejected";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFingerprintApplicationRequest {
+  firstName: string;
+  lastName: string;
+  nrc: string;
+  phone: string;
+  reason: "police_clearance" | "visa" | "employment" | "other";
+  preferredDate: string;
+}
+
+export interface LostDocumentReport {
+  id: UUID;
+  reporterId?: UUID; // if logged in
+  firstName: string;
+  lastName: string;
+  contactPhone: string;
+  documentType: "nrc" | "passport";
+  documentNumber?: string;
+  dateLost: string;
+  locationLost: string;
+  description: string;
+  status: "reported" | "investigating" | "found" | "closed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLostDocumentReportRequest {
+  firstName: string;
+  lastName: string;
+  contactPhone: string;
+  documentType: "nrc" | "passport";
+  documentNumber?: string;
+  dateLost: string;
+  locationLost: string;
+  description: string;
+}
+

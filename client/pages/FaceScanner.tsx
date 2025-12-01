@@ -12,7 +12,7 @@ export default function FaceScanner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [foundResident, setFoundResident] = useState<Resident | null>(null);
-  
+
   // Face scanning states
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [faceScanning, setFaceScanning] = useState(false);
@@ -26,16 +26,16 @@ export default function FaceScanner() {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
+
     oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
     oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1);
-    
+
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-    
+
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.3);
   };
@@ -44,12 +44,12 @@ export default function FaceScanner() {
   const startCamera = useCallback(async () => {
     try {
       setError(null);
-      
+
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera access is not supported in this browser or requires HTTPS.');
       }
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
@@ -57,7 +57,7 @@ export default function FaceScanner() {
           facingMode: 'user'
         }
       });
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
@@ -65,7 +65,7 @@ export default function FaceScanner() {
       }
     } catch (err: any) {
       let errorMessage = 'Failed to access camera.';
-      
+
       if (err.name === 'NotAllowedError') {
         errorMessage = 'Camera access denied. Please allow camera permissions and try again.';
       } else if (err.name === 'NotFoundError') {
@@ -75,7 +75,7 @@ export default function FaceScanner() {
       } else if (err.message.includes('HTTPS')) {
         errorMessage = 'Camera access requires HTTPS. Please use a secure connection.';
       }
-      
+
       setError(errorMessage);
       console.error('Camera access error:', err);
     }
@@ -97,17 +97,17 @@ export default function FaceScanner() {
   // Capture face image
   const captureImage = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
-    
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
-    
+
     if (!context) return;
-    
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0);
-    
+
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
     setCapturedImage(imageData);
   }, []);
@@ -123,24 +123,24 @@ export default function FaceScanner() {
       setLoading(true);
       setFaceScanning(true);
       setError(null);
-      
+
       // Simulate face recognition processing time
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       // For demo purposes, randomly match with one of our sample residents
       const sampleResidents = [
         { nationalId: 'NRC123456789' },
         { nationalId: 'NRC987654321' },
         { nationalId: 'NRC555666777' }
       ];
-      
+
       // Simulate 70% success rate for face recognition
       const isMatch = Math.random() > 0.3;
-      
+
       if (isMatch) {
         const randomResident = sampleResidents[Math.floor(Math.random() * sampleResidents.length)];
         const res = await Api.searchResident({ nationalId: randomResident.nationalId });
-        
+
         if (res.resident) {
           // Play success sound
           try {
@@ -148,9 +148,9 @@ export default function FaceScanner() {
           } catch (soundError) {
             console.log('Could not play sound:', soundError);
           }
-          
+
           setFoundResident(res.resident);
-          
+
           // Show success toast
           toast({
             title: "Face Recognition Successful!",
@@ -243,7 +243,7 @@ export default function FaceScanner() {
                 </div>
               )}
             </div>
-            
+
             {/* Camera Controls */}
             <div className="flex gap-2 justify-center">
               {!isCameraActive && !capturedImage && (
@@ -252,7 +252,7 @@ export default function FaceScanner() {
                   Start Camera
                 </Button>
               )}
-              
+
               {isCameraActive && !capturedImage && (
                 <>
                   <Button onClick={captureImage} className="flex items-center gap-2">
@@ -265,11 +265,11 @@ export default function FaceScanner() {
                   </Button>
                 </>
               )}
-              
+
               {capturedImage && (
                 <>
-                  <Button 
-                    onClick={searchByFace} 
+                  <Button
+                    onClick={searchByFace}
                     disabled={loading}
                     className="flex items-center gap-2"
                   >
@@ -284,13 +284,13 @@ export default function FaceScanner() {
               )}
             </div>
           </div>
-          
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
               <div className="text-sm text-red-600">{error}</div>
             </div>
           )}
-          
+
           {foundResident && (
             <Card className="bg-green-50 border-green-200">
               <CardHeader>
@@ -346,17 +346,17 @@ export default function FaceScanner() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex gap-2 pt-3">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={resetScanner}
                     className="flex-1"
                   >
                     Scan Another
                   </Button>
-                  <Button 
-                    onClick={() => navigate('/police/cases/new', { state: { resident: foundResident } })}
+                  <Button
+                    onClick={() => navigate('/dashboard/police/cases/new', { state: { resident: foundResident } })}
                     className="flex-1"
                   >
                     Create Case
@@ -365,7 +365,7 @@ export default function FaceScanner() {
               </CardContent>
             </Card>
           )}
-          
+
           {/* Hidden canvas for image capture */}
           <canvas ref={canvasRef} style={{ display: 'none' }} />
         </CardContent>
